@@ -206,8 +206,12 @@ class _HomePageState extends State<HomePage> {
   Future<void> _confirmAndUpdate() async {
     final bool? go = await showDialog<bool>(
       context: context,
-      builder: (BuildContext context) =>
-          _ConfirmDialog(from: _pedal!.identity, to: _package!.product),
+      builder: (BuildContext context) => _ConfirmDialog(
+        from: _pedal!.identity,
+        to: _package!.product,
+        rebrand: _pedal!.rebrand,
+        family: _pedal!.family,
+      ),
     );
     if (go != true) {
       return;
@@ -564,7 +568,10 @@ class _HomePageState extends State<HomePage> {
       done: p != null,
       children: <Widget>[
         if (p != null) ...<Widget>[
-          _InfoRow('Model', p.family),
+          _InfoRow(
+            'Model',
+            p.rebrand == null ? p.family : '${p.rebrand} (${p.family})',
+          ),
           _InfoRow('Installed', p.inLoader ? 'update mode' : p.version),
           _InfoRow('Port', p.port.name),
           if (p.inLoader)
@@ -865,9 +872,19 @@ class _ResultCard extends StatelessWidget {
 }
 
 class _ConfirmDialog extends StatefulWidget {
-  const _ConfirmDialog({required this.from, required this.to});
+  const _ConfirmDialog({
+    required this.from,
+    required this.to,
+    required this.rebrand,
+    required this.family,
+  });
   final String from;
   final String to;
+
+  /// Set for another brand's unit (e.g. `PIXIE1`), which this turns into a
+  /// [family]; that needs its own, explicit consent.
+  final String? rebrand;
+  final String family;
 
   @override
   State<_ConfirmDialog> createState() => _ConfirmDialogState();
@@ -875,9 +892,14 @@ class _ConfirmDialog extends StatefulWidget {
 
 class _ConfirmDialogState extends State<_ConfirmDialog> {
   bool _understood = false;
+  bool _rebrandUnderstood = false;
+
+  bool get _canGo =>
+      _understood && (widget.rebrand == null || _rebrandUnderstood);
 
   @override
   Widget build(BuildContext context) {
+    final String? rebrand = widget.rebrand;
     return AlertDialog(
       icon: const Icon(Icons.warning_amber_rounded),
       title: const Text('Write new firmware?'),
@@ -891,6 +913,29 @@ class _ConfirmDialogState extends State<_ConfirmDialog> {
             'An interrupted update can leave the pedal unusable. Keep it '
             'connected and powered until the app says it is done.',
           ),
+          if (rebrand != null) ...<Widget>[
+            const SizedBox(height: 12),
+            Text(
+              'This is a $rebrand, sold as a rebranded ${widget.family}. '
+              'There is no $rebrand firmware, so this writes the '
+              '${widget.family} firmware: afterwards the pedal reports itself '
+              'as a ${widget.family} and cannot go back to the $rebrand '
+              'firmware. This has not been tested on a real $rebrand yet; if '
+              'its hardware differs, the pedal may stop working.',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _rebrandUnderstood,
+              onChanged: (bool? v) =>
+                  setState(() => _rebrandUnderstood = v ?? false),
+              title: Text(
+                'Turn my $rebrand into a ${widget.family}. I accept it may '
+                'brick the pedal.',
+              ),
+              controlAffinity: ListTileControlAffinity.leading,
+            ),
+          ],
           const SizedBox(height: 8),
           CheckboxListTile(
             contentPadding: EdgeInsets.zero,
@@ -907,7 +952,7 @@ class _ConfirmDialogState extends State<_ConfirmDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _understood ? () => Navigator.pop(context, true) : null,
+          onPressed: _canGo ? () => Navigator.pop(context, true) : null,
           child: const Text('Update'),
         ),
       ],

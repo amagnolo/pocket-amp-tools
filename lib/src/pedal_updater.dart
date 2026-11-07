@@ -61,6 +61,9 @@ class DetectedPedal {
 
   bool get inLoader => identity.startsWith('ota-');
   String get family => familyOf(identity);
+
+  /// `PIXIE1` when this is another brand's unit of [family], else null.
+  String? get rebrand => rebrandOf(identity);
   String get version => versionOf(identity);
 }
 
