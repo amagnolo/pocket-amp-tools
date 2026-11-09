@@ -6,7 +6,7 @@
 [![license](https://img.shields.io/github/license/vitoramaral10/pocket-amp-upgrader)](LICENSE)
 ![platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-informational)
 
-Update the **M-VAVE Pocket AMP** guitar pedal firmware (V1.05) over USB from **macOS, Linux or Windows**, with the official firmware file from M-VAVE. Also detects the Coolmusic PIXIE1. Website: <https://vitoramaral10.github.io/pocket-amp-upgrader/>
+Update the firmware of the **M-VAVE Pocket AMP** guitar pedal (V1.05) over USB from **macOS, Linux or Windows**, with the official firmware file from M-VAVE. The goal is every Pocket AMP, whatever brand is printed on it: clones sold under other names, such as the Coolmusic PIXIE1, are supported too. Website: <https://vitoramaral10.github.io/pocket-amp-upgrader/>
 
 M-VAVE's own updater runs only on Windows and, at the time of writing, its "POCKET AMP" bundle ships an older firmware than the one on the downloads page. This app sends the current `.fwsc` file from M-VAVE over plain USB-MIDI, so it needs no drivers.
 
@@ -39,13 +39,20 @@ Get the build for your system from the newest entry on the [releases page](../..
 
 To check the installed version on the pedal itself, hold **Home** and press **>**.
 
-### Coolmusic PIXIE1
+### Pocket AMP clones
 
-The PIXIE1 appears to be a Pocket AMP sold under another name: same manual, same M-EFCS app. The app detects it as *PIXIE1 (Pocket AMP)* and can install the Pocket AMP firmware on it, after a separate confirmation. Know before you do it:
+The same pedal is sold under other brands, and each reports its own name. The app keeps a list of names confirmed to be a Pocket AMP. A listed clone is detected as *NAME (Pocket AMP)* and can get the Pocket AMP firmware after a separate confirmation. A pedal that is not on the list is refused, because a different pedal that speaks the same protocol (an M-VAVE FM-1, for example) would be bricked by it.
 
-- afterwards the pedal reports itself as a Pocket AMP, and there is no PIXIE1 firmware to go back to;
-- nobody has finished this on a real PIXIE1 yet ([issue #2](../../issues/2));
-- PIXIE1 V0.07 stores presets in a layout the app does not know, so they **are not restored**. The app keeps a raw copy (`raw-PIXIE1_….bin` in `Documents/Pocket AMP Upgrader`) and continues;
+| Clone | Reports | Status |
+| --- | --- | --- |
+| Coolmusic PIXIE1 | `PIXIE1_007` | updated to V1.05 by an owner ([#2](../../issues/2)) |
+
+Have a clone that is not listed? Open the app, copy the log from **Details**, and send it with the [hardware test report](../../issues/new?template=hardware_report.yml) form.
+
+Know before you cross-flash a clone:
+
+- afterwards the pedal reports itself as a Pocket AMP, and there may be no firmware of the original brand to go back to;
+- older clone firmware (PIXIE1 V0.07, for example) has no preset EQ table, so its presets **are not restored**. The app keeps a raw copy (`raw-<pedal>-<date>.bin` in `Documents/Pocket AMP Upgrader`) and continues;
 - after updating from V0.07, M-VAVE says to switch to Speaker mode and load the Speaker mode preset in M-EFCS to get sound.
 
 ### "Already runs this version"
@@ -65,8 +72,8 @@ The **Presets** card saves all 80 presets and their EQ to a `.json` file and res
 Before anything is written, the app:
 
 - validates the whole `.fwsc` package (header, directory and CRC of every entry, chip `AC791N`);
-- only accepts packages for the Pocket AMP (also on a PIXIE1), and only the update loader (`ota.bin`) whose SHA-256 is known (`ef1f2db8…`, the one in the official V1.05 package);
-- checks that the pedal on the USB port says it is a Pocket AMP (or a PIXIE1) before arming the transfer;
+- only accepts packages for the Pocket AMP (also on a listed clone), and only the update loader (`ota.bin`) whose SHA-256 is known (`ef1f2db8…`, the one in the official V1.05 package);
+- checks that the pedal on the USB port says it is a Pocket AMP (or a listed clone) before arming the transfer;
 - only asks the pedal for its identity when it opens; presets are read only when you start an update or save a backup, and nothing is written until you confirm.
 
 ## Status
