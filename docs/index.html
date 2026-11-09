@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>M-VAVE Pocket AMP firmware update for Mac, Linux and Windows · Pocket AMP Upgrader</title>
-<meta name="description" content="Free, open source app that updates the M-VAVE Pocket AMP guitar pedal to firmware V1.05 over USB from macOS, Linux or Windows. Backs up and restores your 80 presets. Also detects the Coolmusic PIXIE1.">
+<meta name="description" content="Free, open source app that updates the M-VAVE Pocket AMP guitar pedal to firmware V1.05 over USB from macOS, Linux or Windows. Backs up and restores your 80 presets. Also works with Pocket AMP clones such as the Coolmusic PIXIE1.">
 <link rel="canonical" href="https://vitoramaral10.github.io/pocket-amp-upgrader/">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Update the M-VAVE Pocket AMP firmware from Mac, Linux or Windows">
@@ -22,7 +22,7 @@
     {
       "@type": "SoftwareApplication",
       "name": "Pocket AMP Upgrader",
-      "description": "Updates the firmware of the M-VAVE Pocket AMP guitar pedal over USB-MIDI, with automatic preset backup and restore.",
+      "description": "Updates the firmware of the M-VAVE Pocket AMP guitar pedal and its clones over USB-MIDI, with automatic preset backup and restore.",
       "applicationCategory": "UtilitiesApplication",
       "operatingSystem": "Windows 10, Windows 11, macOS 11+, Linux",
       "license": "https://www.gnu.org/licenses/gpl-3.0.html",
@@ -40,8 +40,8 @@
           "acceptedAnswer": { "@type": "Answer", "text": "A firmware update can overwrite some presets and their EQ. The app backs up all 80 presets and their EQ before updating and restores only what changed afterwards." } },
         { "@type": "Question", "name": "Do I need a driver?",
           "acceptedAnswer": { "@type": "Answer", "text": "No. The pedal is a standard USB-MIDI device, and the app uses the MIDI support built into Windows, macOS and Linux." } },
-        { "@type": "Question", "name": "Does it work with the Coolmusic PIXIE1?",
-          "acceptedAnswer": { "@type": "Answer", "text": "The PIXIE1 appears to be a Pocket AMP under another name. The app detects it, and a beta build can install the Pocket AMP firmware on it after a separate warning. Its old presets are not restored." } },
+        { "@type": "Question", "name": "Does it work with Pocket AMP clones like the Coolmusic PIXIE1?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes, for clones confirmed to be a Pocket AMP. The PIXIE1 is one: an owner updated it to V1.05. The app asks for a separate confirmation, and presets from older clone firmware are not restored. Clones not yet listed can be reported on GitHub." } },
         { "@type": "Question", "name": "What if the update stops halfway?",
           "acceptedAnswer": { "@type": "Answer", "text": "Reconnect the pedal and click Detect pedal. A pedal left in update mode is shown as such, and Resume update writes the firmware again." } },
         { "@type": "Question", "name": "Is this an official M-VAVE app?",
@@ -128,7 +128,7 @@ code { font-size: .92em; background: var(--surface); padding: 1px 5px; border-ra
   <header class="wrap">
     <div class="grid">
       <div>
-        <p class="eyebrow">M-VAVE Pocket AMP · free and open source</p>
+        <p class="eyebrow">M-VAVE Pocket AMP and clones · free and open source</p>
         <h1>Update your Pocket AMP firmware from Mac, Linux or Windows</h1>
         <p class="lead prose">Pocket AMP Upgrader installs M-VAVE's official firmware (currently V1.05) over plain USB, without drivers. It backs up all 80 presets first and puts back the ones the update changed.</p>
         <div class="actions">
@@ -177,8 +177,8 @@ code { font-size: .92em; background: var(--surface); padding: 1px 5px; border-ra
         <p>A firmware update can overwrite some presets and their EQ. The app backs up all 80 presets and their EQ before updating, and restores only what changed. You can also save a backup to a file at any time.</p></details>
       <details><summary>Do I need a driver?</summary>
         <p>No. The pedal is a standard USB-MIDI device. Use a data cable: many USB cables only charge.</p></details>
-      <details><summary>Does it work with the Coolmusic PIXIE1?</summary>
-        <p>The PIXIE1 appears to be a Pocket AMP under another name. The app detects it, and a beta build can install the Pocket AMP firmware on it after a separate warning. Afterwards it reports itself as a Pocket AMP, and its old presets are not restored. <a href="https://github.com/vitoramaral10/pocket-amp-upgrader/issues/2">Follow the progress</a>.</p></details>
+      <details><summary>Does it work with Pocket AMP clones like the Coolmusic PIXIE1?</summary>
+        <p>Yes, for clones confirmed to be a Pocket AMP. The Coolmusic PIXIE1 is one: an owner updated it to V1.05. The app asks for a separate confirmation, the pedal then reports itself as a Pocket AMP, and presets from older clone firmware are not restored. Other pedals are refused, because a different pedal that speaks the same protocol would be bricked. Have a clone that is not listed? <a href="https://github.com/vitoramaral10/pocket-amp-upgrader/issues/new/choose">Report it on GitHub</a>.</p></details>
       <details><summary>What if the update stops halfway?</summary>
         <p>Don't unplug in a hurry. Reconnect the pedal and click <strong>Detect pedal</strong>. A pedal left in update mode is shown as such, and <strong>Resume update</strong> writes the firmware again.</p></details>
       <details><summary>Is this an official M-VAVE app?</summary>
