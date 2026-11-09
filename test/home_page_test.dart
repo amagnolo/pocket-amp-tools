@@ -32,4 +32,52 @@ void main() {
       expect(tester.widget<ButtonStyleButton>(update).onPressed, isNull);
     },
   );
+
+  group('update without a preset backup', () {
+    testWidgets('continues only on "Update without a backup"', (
+      WidgetTester tester,
+    ) async {
+      expect(
+        await _askWithoutBackup(tester, 'Update without a backup'),
+        isTrue,
+      );
+    });
+
+    testWidgets('Cancel stops the update', (WidgetTester tester) async {
+      expect(await _askWithoutBackup(tester, 'Cancel'), isFalse);
+    });
+
+    testWidgets('tapping outside does not close it', (
+      WidgetTester tester,
+    ) async {
+      expect(await _askWithoutBackup(tester, ''), isNull);
+      expect(find.text('Presets cannot be backed up'), findsOneWidget);
+    });
+  });
+}
+
+Future<bool?> _askWithoutBackup(WidgetTester tester, String button) async {
+  bool? answer;
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Builder(
+        builder: (BuildContext context) => TextButton(
+          onPressed: () async =>
+              answer = await confirmUpdateWithoutBackup(context, '/raw.bin'),
+          child: const Text('open'),
+        ),
+      ),
+    ),
+  );
+  await tester.tap(find.text('open'));
+  await tester.pumpAndSettle();
+  expect(find.text('Presets cannot be backed up'), findsOneWidget);
+  expect(find.textContaining('/raw.bin'), findsOneWidget);
+  if (button.isEmpty) {
+    await tester.tapAt(const Offset(5, 5)); // the barrier
+  } else {
+    await tester.tap(find.text(button));
+  }
+  await tester.pumpAndSettle();
+  return answer;
 }

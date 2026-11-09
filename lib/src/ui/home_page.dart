@@ -250,7 +250,8 @@ class _HomePageState extends State<HomePage> {
             'Presets are not in the Pocket AMP layout (${e.message}); '
             'raw copy kept at ${raw.path}. They will not be restored.',
           );
-          if (!await _continueWithoutBackup(raw.path)) {
+          if (!mounted ||
+              !await confirmUpdateWithoutBackup(context, raw.path)) {
             _addLog('Update cancelled. Nothing was written.');
             setState(() => _stage = _Stage.idle);
             return;
@@ -277,35 +278,6 @@ class _HomePageState extends State<HomePage> {
         _pedal = null;
       });
     }
-  }
-
-  Future<bool> _continueWithoutBackup(String rawPath) async {
-    final bool? go = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) => AlertDialog(
-        icon: const Icon(Icons.warning_amber_rounded),
-        title: const Text('Presets cannot be backed up'),
-        content: Text(
-          "This pedal's presets are not in the Pocket AMP layout, so they "
-          'cannot be restored on the new firmware. A raw copy was saved to:\n'
-          '$rawPath\n\n'
-          'Nothing has been written to the pedal yet. If you continue, its '
-          'current presets may be lost for good.',
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Update without a backup'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-        ],
-      ),
-    );
-    return go == true;
   }
 
   Future<void> _runPresetTask(
@@ -1067,4 +1039,38 @@ class _LogPanel extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Asks before updating a rebrand whose presets cannot be backed up; true
+/// only when the user picks "Update without a backup".
+Future<bool> confirmUpdateWithoutBackup(
+  BuildContext context,
+  String rawPath,
+) async {
+  final bool? go = await showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (BuildContext context) => AlertDialog(
+      icon: const Icon(Icons.warning_amber_rounded),
+      title: const Text('Presets cannot be backed up'),
+      content: Text(
+        "This pedal's presets are not in the Pocket AMP layout, so they "
+        'cannot be restored on the new firmware. A raw copy was saved to:\n'
+        '$rawPath\n\n'
+        'Nothing has been written to the pedal yet. If you continue, its '
+        'current presets may be lost for good.',
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Update without a backup'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+      ],
+    ),
+  );
+  return go == true;
 }
