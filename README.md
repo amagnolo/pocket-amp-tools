@@ -131,6 +131,15 @@ flutter build linux     # or windows / macos, on that system
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). Safety problems (a way to write wrong data to a pedal) go through [private reporting](SECURITY.md).
 
+## Thanks
+
+Every clone on the list is there because an owner risked their own pedal and reported back.
+
+- [ShinaTak1](https://github.com/ShinaTak1): first to update a Coolmusic PIXIE1 to V1.05 ([#2](../../issues/2)).
+- [jtcornett](https://github.com/jtcornett): added the New Bee SK17 ([#6](../../pull/6)).
+
+Tested it on your pedal? Send the [hardware test report](../../issues/new?template=hardware_report.yml) and your name goes here.
+
 ## License
 
 GPL-3.0-only. The update protocol follows M-VAVE's FM1 Open browser updater, which is GPL-3.0. M-VAVE, Pocket AMP and FM-1 are trademarks of their owners; the firmware belongs to M-VAVE and is not distributed with this app.
