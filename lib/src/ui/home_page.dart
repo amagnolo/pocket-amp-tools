@@ -738,9 +738,9 @@ class _WarningCard extends StatelessWidget {
               ),
               SizedBox(height: 8),
               Text(
-                '• Your presets are backed up automatically before updating. The '
-                'V1.05 update was seen overwriting P01–P05 and P80 and resetting '
-                'their EQ; the app offers to restore them when it is done.\n'
+                '• A firmware update can overwrite some presets and their EQ. '
+                'The app backs up all 80 first and offers to restore them when '
+                'it is done.\n'
                 '• Charge the battery and use a reliable USB data cable.\n'
                 '• Do not unplug, turn off or let the computer sleep until the '
                 'app says it is done (about 2 minutes).\n'

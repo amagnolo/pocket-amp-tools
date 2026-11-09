@@ -29,7 +29,7 @@ Get the build for your system from the newest entry on the [releases page](../..
 
 ## How to update
 
-1. Know that the update can change presets: V1.05 was seen overwriting P01–P05 and P80 and resetting their EQ (the other presets, names and IRs stayed). The app backs up all 80 presets and their EQ automatically before updating, and you can also save a backup to a file at any time.
+1. Know that a firmware update can overwrite some presets and their EQ. The app backs up all 80 presets and their EQ automatically before updating, and you can also save a backup to a file at any time.
 2. Charge the pedal, connect it with a USB **data** cable and turn it on.
 3. Close the M-VAVE app and anything else that uses MIDI (DAWs, browser tabs with Web MIDI).
 4. Open Pocket AMP Upgrader. It detects the pedal and shows the installed version.
