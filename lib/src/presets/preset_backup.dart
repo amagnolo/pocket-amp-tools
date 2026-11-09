@@ -125,12 +125,23 @@ Future<PresetBackup> readPresetBank(
     area.setAll(at, await session.readRaw(at, n));
     onProgress?.call((at + n) / total);
   }
-  return PresetBackup(
-    identity: identity,
-    created: DateTime.now(),
-    presets: Uint8List.sublistView(area, 0, eqTableAddress),
-    eq: Uint8List.sublistView(area, eqTableAddress),
-  );
+  try {
+    return PresetBackup(
+      identity: identity,
+      created: DateTime.now(),
+      presets: Uint8List.sublistView(area, 0, eqTableAddress),
+      eq: Uint8List.sublistView(area, eqTableAddress),
+    );
+  } on FormatException catch (e) {
+    throw UnknownPresetLayout(e.message, area);
+  }
+}
+
+/// The pedal answered, but its flash is not laid out like a Pocket AMP's
+/// (seen on a PIXIE1 running V0.07). [area] holds the raw bytes read.
+class UnknownPresetLayout extends FormatException {
+  UnknownPresetLayout(super.message, this.area);
+  final Uint8List area;
 }
 
 /// Writes back only what differs from [backup], commits once, and checks the

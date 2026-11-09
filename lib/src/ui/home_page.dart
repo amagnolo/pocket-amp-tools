@@ -226,14 +226,31 @@ class _HomePageState extends State<HomePage> {
         setState(
           () => _progress = const UpdateProgress(UpdatePhase.backup, null),
         );
-        final PresetBackup b = await _presets.backup(
-          _pedal!,
-          onProgress: (double f) =>
-              setState(() => _progress = UpdateProgress(UpdatePhase.backup, f)),
-        );
-        final File copy = await PresetService.keepCopy(b);
-        _addLog('Presets backed up to ${copy.path}');
-        setState(() => _preUpdateBackup = b);
+        try {
+          final PresetBackup b = await _presets.backup(
+            _pedal!,
+            onProgress: (double f) => setState(
+              () => _progress = UpdateProgress(UpdatePhase.backup, f),
+            ),
+          );
+          final File copy = await PresetService.keepCopy(b);
+          _addLog('Presets backed up to ${copy.path}');
+          setState(() => _preUpdateBackup = b);
+        } on UnknownPresetLayout catch (e) {
+          // A rebrand on old firmware (PIXIE1 V0.07) keeps presets in another
+          // layout; they cannot be restored on Pocket AMP firmware anyway.
+          if (_pedal!.rebrand == null) {
+            rethrow;
+          }
+          final File raw = await PresetService.keepRaw(
+            _pedal!.identity,
+            e.area,
+          );
+          _addLog(
+            'Presets are not in the Pocket AMP layout (${e.message}); '
+            'raw copy kept at ${raw.path}. They will not be restored.',
+          );
+        }
       }
       final String after = await _updater.update(
         _package!,
@@ -282,10 +299,17 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _saveBackup() => _runPresetTask('Saving a backup', () async {
-    final PresetBackup b = await _presets.backup(
-      _pedal!,
-      onProgress: (double f) => setState(() => _presetFraction = f),
-    );
+    final PresetBackup b;
+    try {
+      b = await _presets.backup(
+        _pedal!,
+        onProgress: (double f) => setState(() => _presetFraction = f),
+      );
+    } on UnknownPresetLayout catch (e) {
+      final File raw = await PresetService.keepRaw(_pedal!.identity, e.area);
+      return 'Presets are not in the Pocket AMP layout (${e.message}). '
+          'Raw copy kept at ${raw.path}.';
+    }
     final FileSaveLocation? where = await getSaveLocation(
       suggestedName: b.suggestedFileName,
       acceptedTypeGroups: const <XTypeGroup>[
