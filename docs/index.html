@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>M-VAVE Pocket AMP firmware update for Mac, Linux and Windows · Pocket AMP Upgrader</title>
+<meta name="description" content="Free, open source app that updates the M-VAVE Pocket AMP guitar pedal to firmware V1.05 over USB from macOS, Linux or Windows. Backs up and restores your 80 presets. Also detects the Coolmusic PIXIE1.">
+<link rel="canonical" href="https://vitoramaral10.github.io/pocket-amp-upgrader/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Update the M-VAVE Pocket AMP firmware from Mac, Linux or Windows">
+<meta property="og:description" content="Free, open source updater for the Pocket AMP. Installs the official V1.05 firmware over USB and keeps your presets.">
+<meta property="og:url" content="https://vitoramaral10.github.io/pocket-amp-upgrader/">
+<meta property="og:image" content="https://vitoramaral10.github.io/pocket-amp-upgrader/social-preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="color-scheme" content="light dark">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "name": "Pocket AMP Upgrader",
+      "description": "Updates the firmware of the M-VAVE Pocket AMP guitar pedal over USB-MIDI, with automatic preset backup and restore.",
+      "applicationCategory": "UtilitiesApplication",
+      "operatingSystem": "Windows 10, Windows 11, macOS 11+, Linux",
+      "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "downloadUrl": "https://github.com/vitoramaral10/pocket-amp-upgrader/releases",
+      "codeRepository": "https://github.com/vitoramaral10/pocket-amp-upgrader",
+      "screenshot": "https://vitoramaral10.github.io/pocket-amp-upgrader/screenshot.png"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        { "@type": "Question", "name": "How do I update the Pocket AMP firmware on a Mac?",
+          "acceptedAnswer": { "@type": "Answer", "text": "M-VAVE's updater runs only on Windows. Pocket AMP Upgrader runs on macOS 11 or newer: connect the pedal with a USB data cable, open the app, click Download from M-VAVE, then Update firmware. It takes about two minutes." } },
+        { "@type": "Question", "name": "Will the update erase my presets?",
+          "acceptedAnswer": { "@type": "Answer", "text": "V1.05 was seen overwriting presets P01-P05 and P80 and resetting their EQ. The app backs up all 80 presets and their EQ before updating and restores only what changed afterwards." } },
+        { "@type": "Question", "name": "Do I need a driver?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. The pedal is a standard USB-MIDI device, and the app uses the MIDI support built into Windows, macOS and Linux." } },
+        { "@type": "Question", "name": "Does it work with the Coolmusic PIXIE1?",
+          "acceptedAnswer": { "@type": "Answer", "text": "The PIXIE1 appears to be a Pocket AMP under another name. The app detects it, and a beta build can install the Pocket AMP firmware on it after a separate warning. Its old presets are not restored." } },
+        { "@type": "Question", "name": "What if the update stops halfway?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Reconnect the pedal and click Detect pedal. A pedal left in update mode is shown as such, and Resume update writes the firmware again." } },
+        { "@type": "Question", "name": "Is this an official M-VAVE app?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. It is a free community tool under the GPL-3.0 license. It installs the official firmware file published by M-VAVE and does not ship the firmware itself." } }
+      ]
+    }
+  ]
+}
+</script>
+<style>
+:root {
+  --bg: oklch(0.985 0.004 70);
+  --surface: oklch(0.955 0.008 70);
+  --content: oklch(0.22 0.01 70);
+  --content-muted: oklch(0.45 0.012 70);
+  --border: oklch(0.88 0.01 70);
+  --accent: oklch(0.78 0.15 70);
+  --accent-hover: oklch(0.72 0.15 70);
+  --accent-fg: oklch(0.2 0.03 70);
+  --link: oklch(0.48 0.13 55);
+  --ring: oklch(0.55 0.15 55);
+  --radius: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: oklch(0.17 0.006 70);
+    --surface: oklch(0.22 0.008 70);
+    --content: oklch(0.93 0.006 70);
+    --content-muted: oklch(0.72 0.01 70);
+    --border: oklch(0.32 0.01 70);
+    --accent: oklch(0.8 0.13 70);
+    --accent-hover: oklch(0.85 0.12 70);
+    --link: oklch(0.82 0.11 70);
+    --ring: oklch(0.82 0.11 70);
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--content);
+  font: 400 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.wrap { max-width: 64rem; margin: 0 auto; padding: 0 16px; }
+.prose { max-width: 65ch; }
+a { color: var(--link); }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; border-radius: 4px; }
+header { padding: 64px 0 48px; }
+.eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--content-muted); margin: 0 0 12px; }
+h1 { font-size: clamp(32px, 5vw, 52px); line-height: 1.1; letter-spacing: -.02em; font-weight: 700; margin: 0 0 16px; max-width: 20ch; }
+.lead { font-size: 19px; color: var(--content-muted); margin: 0 0 32px; }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.btn {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 10px 20px;
+  border-radius: var(--radius); font-weight: 600; font-size: 16px; text-decoration: none;
+  transition: background-color .15s ease-out;
+}
+.btn-primary { background: var(--accent); color: var(--accent-fg); }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-secondary { color: var(--content); border: 1px solid var(--border); }
+.btn-secondary:hover { background: var(--surface); }
+.btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+.note { font-size: 14px; color: var(--content-muted); margin: 16px 0 0; }
+.shot { display: block; width: 100%; max-width: 480px; height: auto; border-radius: 12px; border: 1px solid var(--border); }
+section { padding: 48px 0; border-top: 1px solid var(--border); }
+h2 { font-size: 28px; line-height: 1.2; letter-spacing: -.01em; font-weight: 600; margin: 0 0 24px; }
+.grid { display: grid; gap: 48px; align-items: start; }
+@media (min-width: 860px) { .grid { grid-template-columns: 1fr 1fr; } }
+ol, ul { padding-left: 1.25em; margin: 0; }
+li + li { margin-top: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th, td { text-align: left; padding: 10px 12px 10px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { font-weight: 600; }
+details { border-bottom: 1px solid var(--border); padding: 16px 0; }
+summary { cursor: pointer; font-weight: 600; font-size: 18px; }
+details p { margin: 12px 0 0; color: var(--content-muted); }
+footer { padding: 32px 0 64px; border-top: 1px solid var(--border); font-size: 14px; color: var(--content-muted); }
+code { font-size: .92em; background: var(--surface); padding: 1px 5px; border-radius: 4px; }
+@media (prefers-reduced-motion: reduce) { * { transition-duration: .01ms !important; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="wrap">
+    <div class="grid">
+      <div>
+        <p class="eyebrow">M-VAVE Pocket AMP · free and open source</p>
+        <h1>Update your Pocket AMP firmware from Mac, Linux or Windows</h1>
+        <p class="lead prose">Pocket AMP Upgrader installs M-VAVE's official firmware (currently V1.05) over plain USB, without drivers. It backs up all 80 presets first and puts back the ones the update changed.</p>
+        <div class="actions">
+          <a class="btn btn-primary" href="https://github.com/vitoramaral10/pocket-amp-upgrader/releases">Download</a>
+          <a class="btn btn-secondary" href="https://github.com/vitoramaral10/pocket-amp-upgrader">Source on GitHub</a>
+        </div>
+        <p class="note">Windows 10/11 · macOS 11+ · Linux x64 (AppImage). Community tool, not affiliated with M-VAVE.</p>
+      </div>
+      <img class="shot" src="screenshot.png" width="1544" height="1718" alt="Pocket AMP Upgrader window showing a detected Pocket AMP, the firmware package and the Update firmware button">
+    </div>
+  </header>
+
+  <section class="wrap">
+    <h2>How to update the Pocket AMP</h2>
+    <ol class="prose">
+      <li>Charge the pedal, connect it with a USB <strong>data</strong> cable and turn it on.</li>
+      <li>Close the M-VAVE app and anything else that uses MIDI.</li>
+      <li>Open Pocket AMP Upgrader. It detects the pedal and shows the installed version.</li>
+      <li>Click <strong>Download from M-VAVE</strong>, or open a <code>.fwsc</code> file you already have.</li>
+      <li>Click <strong>Update firmware</strong> and wait about two minutes. The pedal restarts twice.</li>
+      <li>Click <strong>Restore my presets from before the update</strong>.</li>
+    </ol>
+    <p class="note">To see the installed version on the pedal, hold <strong>Home</strong> and press <strong>&gt;</strong>.</p>
+  </section>
+
+  <section class="wrap">
+    <h2>Why use it</h2>
+    <table class="prose">
+      <thead><tr><th scope="col"></th><th scope="col">M-VAVE updater</th><th scope="col">Pocket AMP Upgrader</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Systems</th><td>Windows only</td><td>Windows, macOS, Linux</td></tr>
+        <tr><th scope="row">Firmware</th><td>Bundled file, older than the downloads page at the time of writing</td><td>Current official file from M-VAVE's server</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="wrap">
+    <h2>Questions</h2>
+    <div class="prose">
+      <details><summary>How do I update the Pocket AMP firmware on a Mac?</summary>
+        <p>M-VAVE's updater runs only on Windows. This app runs on macOS 11 or newer: connect the pedal, open the app, click <strong>Download from M-VAVE</strong>, then <strong>Update firmware</strong>. The app is not signed, so the first time right-click it and choose <strong>Open</strong>.</p></details>
+      <details><summary>Will the update erase my presets?</summary>
+        <p>V1.05 was seen overwriting P01–P05 and P80 and resetting their EQ. The app backs up all 80 presets and their EQ before updating, and restores only what changed. You can also save a backup to a file at any time.</p></details>
+      <details><summary>Do I need a driver?</summary>
+        <p>No. The pedal is a standard USB-MIDI device. Use a data cable: many USB cables only charge.</p></details>
+      <details><summary>Does it work with the Coolmusic PIXIE1?</summary>
+        <p>The PIXIE1 appears to be a Pocket AMP under another name. The app detects it, and a beta build can install the Pocket AMP firmware on it after a separate warning. Afterwards it reports itself as a Pocket AMP, and its old presets are not restored. <a href="https://github.com/vitoramaral10/pocket-amp-upgrader/issues/2">Follow the progress</a>.</p></details>
+      <details><summary>What if the update stops halfway?</summary>
+        <p>Don't unplug in a hurry. Reconnect the pedal and click <strong>Detect pedal</strong>. A pedal left in update mode is shown as such, and <strong>Resume update</strong> writes the firmware again.</p></details>
+      <details><summary>Is this an official M-VAVE app?</summary>
+        <p>No. It is a free community tool under GPL-3.0. It installs the official firmware file from M-VAVE and does not ship the firmware itself. Use it at your own risk.</p></details>
+    </div>
+  </section>
+</main>
+<footer class="wrap">
+  <p class="prose">Pocket AMP Upgrader is open source (GPL-3.0). Found a problem or tested it on your pedal? <a href="https://github.com/vitoramaral10/pocket-amp-upgrader/issues/new/choose">Tell us on GitHub</a>. M-VAVE, Pocket AMP and PIXIE1 are trademarks of their owners.</p>
+</footer>
+</body>
+</html>
