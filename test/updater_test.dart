@@ -77,6 +77,14 @@ void main() {
       List<int>.generate(19969, (int i) => i % 251),
     );
 
+    test('a PIXIE1 is a Pocket AMP under another name', () {
+      expect(familyOf('PIXIE1_007'), 'Pocket AMP');
+      expect(familyOf('ota-PIXIE1_007'), 'Pocket AMP');
+      expect(rebrandOf('PIXIE1_007'), 'PIXIE1');
+      expect(rebrandOf('Pocket AMP_105'), isNull);
+      expect(familyOf('FM-1_015'), 'FM-1');
+    });
+
     test('parses a synthetic package', () {
       final FirmwarePackage p = FirmwarePackage.parse(
         buildFwsc(loader: loader),
@@ -235,6 +243,20 @@ void main() {
         throwsA(isA<UpdateException>()),
       );
       expect(pedal.arms, 0);
+    });
+
+    test('a PIXIE1 is updated as a Pocket AMP', () async {
+      final FakePedal pedal = FakePedal(
+        image: pkg.image,
+        identity: 'PIXIE1_007',
+      );
+      final PedalUpdater up = updater(pedal);
+      final DetectedPedal found = (await up.detect())!;
+      expect(found.family, 'Pocket AMP');
+      expect(found.rebrand, 'PIXIE1');
+      expect(up.blockers(pkg, found), isEmpty);
+      expect(await up.update(pkg, found, (_) {}), 'Pocket AMP_105');
+      expect(pedal.flashReceived, pkg.image);
     });
 
     test('blockers refuse the version the pedal already runs', () {

@@ -6,17 +6,20 @@
 [![license](https://img.shields.io/github/license/vitoramaral10/pocket-amp-upgrader)](LICENSE)
 ![platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-informational)
 
-Update the firmware of the **M-VAVE Pocket AMP** over USB from **Linux, Windows or macOS**, with the official firmware file from M-VAVE.
+Update the **M-VAVE Pocket AMP** guitar pedal firmware (V1.05) over USB from **macOS, Linux or Windows**, with the official firmware file from M-VAVE. Also detects the Coolmusic PIXIE1. Website: <https://vitoramaral10.github.io/pocket-amp-upgrader/>
 
 M-VAVE's own updater runs only on Windows and, at the time of writing, its "POCKET AMP" bundle ships an older firmware than the one on the downloads page. This app sends the current `.fwsc` file from M-VAVE over plain USB-MIDI, so it needs no drivers.
 
-![Pocket AMP Upgrader](docs/screenshot.png)
+<picture>
+  <source srcset="docs/screenshot-dark.png" media="(prefers-color-scheme: dark)">
+  <img src="docs/screenshot-light.png" width="480" alt="Pocket AMP Upgrader with a Pocket AMP on V1.03 detected and the official V1.05 package ready to install">
+</picture>
 
 > **Community tool, not affiliated with M-VAVE. Use at your own risk.** A firmware update that is interrupted can leave the pedal unusable.
 
 ## Download
 
-Get the build for your system from the [latest release](../../releases/latest):
+Get the build for your system from the newest entry on the [releases page](../../releases) (the app is still in beta, so the releases are marked *pre-release*):
 
 | System | File | How to run |
 | --- | --- | --- |
@@ -26,7 +29,7 @@ Get the build for your system from the [latest release](../../releases/latest):
 
 ## How to update
 
-1. Know that the update can change presets: V1.05 was seen overwriting P01–P05 and P80 and resetting their EQ (the other presets, names and IRs stayed). The app backs up all 80 presets and their EQ automatically before updating, and you can also save a backup to a file at any time.
+1. Know that a firmware update can overwrite some presets and their EQ. The app backs up all 80 presets and their EQ automatically before updating, and you can also save a backup to a file at any time.
 2. Charge the pedal, connect it with a USB **data** cable and turn it on.
 3. Close the M-VAVE app and anything else that uses MIDI (DAWs, browser tabs with Web MIDI).
 4. Open Pocket AMP Upgrader. It detects the pedal and shows the installed version.
@@ -35,6 +38,15 @@ Get the build for your system from the [latest release](../../releases/latest):
 7. Click **Restore my presets from before the update**. Only the presets and EQ that changed are written back, and the result is read back to check it.
 
 To check the installed version on the pedal itself, hold **Home** and press **>**.
+
+### Coolmusic PIXIE1
+
+The PIXIE1 appears to be a Pocket AMP sold under another name: same manual, same M-EFCS app. The app detects it as *PIXIE1 (Pocket AMP)* and can install the Pocket AMP firmware on it, after a separate confirmation. Know before you do it:
+
+- afterwards the pedal reports itself as a Pocket AMP, and there is no PIXIE1 firmware to go back to;
+- nobody has finished this on a real PIXIE1 yet ([issue #2](../../issues/2));
+- PIXIE1 V0.07 stores presets in a layout the app does not know, so they **are not restored**. The app keeps a raw copy (`raw-PIXIE1_….bin` in `Documents/Pocket AMP Upgrader`) and continues;
+- after updating from V0.07, M-VAVE says to switch to Speaker mode and load the Speaker mode preset in M-EFCS to get sound.
 
 ### "Already runs this version"
 
@@ -53,8 +65,8 @@ The **Presets** card saves all 80 presets and their EQ to a `.json` file and res
 Before anything is written, the app:
 
 - validates the whole `.fwsc` package (header, directory and CRC of every entry, chip `AC791N`);
-- only accepts packages for the Pocket AMP, and only the update loader (`ota.bin`) whose SHA-256 is known (`ef1f2db8…`, the one in the official V1.05 package);
-- checks that the pedal on the USB port says it is a Pocket AMP before arming the transfer;
+- only accepts packages for the Pocket AMP (also on a PIXIE1), and only the update loader (`ota.bin`) whose SHA-256 is known (`ef1f2db8…`, the one in the official V1.05 package);
+- checks that the pedal on the USB port says it is a Pocket AMP (or a PIXIE1) before arming the transfer;
 - only asks the pedal for its identity when it opens; presets are read only when you start an update or save a backup, and nothing is written until you confirm.
 
 ## Status
@@ -62,7 +74,7 @@ Before anything is written, the app:
 | Platform | Detection | Full update |
 | --- | --- | --- |
 | Linux | tested with a real pedal; preset backup and restore too | the app's traffic was traced side by side with the Python prototype that updated a real pedal from V1.03 to V1.05: same requests, same answers. A full update by the app itself waits for the next firmware, because the pedal refuses to reinstall the version it already runs |
-| Windows | not yet tested on hardware | not yet tested on hardware |
+| Windows | works: a user's pedal was detected and its presets read ([#2](../../issues/2)) | not yet tested on hardware |
 | macOS | not yet tested on hardware | not yet tested on hardware |
 
 Reports are very welcome, including "it worked": use the [hardware test report](../../issues/new?template=hardware_report.yml) form.

@@ -168,13 +168,34 @@ class FirmwarePackage {
   bool get isSupportedProduct => supportedProducts.contains(productFamily);
 }
 
-/// `Pocket AMP` for `Pocket AMP_105` or `ota-Pocket AMP_103`.
-String familyOf(String identity) {
+/// Other brands' names for the same hardware, mapped to the product whose
+/// firmware they take. Flashing one turns it into that product.
+///
+/// The Coolmusic PIXIE1 manual is the Pocket AMP manual relabelled (its print
+/// sheet is titled "POCKET AMP", the text still says "using the POCKET AMP as
+/// a sound card", and it pairs with M-VAVE's M-EFCS app). Not yet confirmed
+/// by flashing a real unit.
+const Map<String, String> rebrands = <String, String>{'PIXIE1': 'Pocket AMP'};
+
+/// The name the pedal itself reports: `PIXIE1` for `PIXIE1_007`.
+String reportedFamilyOf(String identity) {
   final String id = identity.startsWith('ota-')
       ? identity.substring(4)
       : identity;
   final int cut = id.lastIndexOf('_');
   return cut < 0 ? id : id.substring(0, cut);
+}
+
+/// `Pocket AMP` for `Pocket AMP_105`, `ota-Pocket AMP_103` or `PIXIE1_007`.
+String familyOf(String identity) {
+  final String f = reportedFamilyOf(identity);
+  return rebrands[f] ?? f;
+}
+
+/// The other brand's name when [identity] is a rebranded unit, else null.
+String? rebrandOf(String identity) {
+  final String f = reportedFamilyOf(identity);
+  return rebrands.containsKey(f) ? f : null;
 }
 
 /// `1.05` for `Pocket AMP_105`.

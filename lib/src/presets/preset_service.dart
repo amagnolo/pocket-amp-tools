@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:path_provider/path_provider.dart';
 
@@ -61,15 +62,32 @@ class PresetService {
   /// Keeps a copy in `Documents/Pocket AMP Upgrader`, so a backup taken right
   /// before an update survives the app being closed.
   static Future<File> keepCopy(PresetBackup backup) async {
+    final File f = await _inKeepDir(backup.suggestedFileName);
+    await f.writeAsString(backup.toJson());
+    return f;
+  }
+
+  /// Keeps the raw preset area of a pedal whose layout is unknown, so the
+  /// bytes are not lost and can be studied later.
+  static Future<File> keepRaw(String identity, Uint8List area) async {
+    final String stamp = DateTime.now()
+        .toIso8601String()
+        .split('.')
+        .first
+        .replaceAll(':', '');
+    final File f = await _inKeepDir(
+      'raw-${identity.replaceAll(' ', '_')}-$stamp.bin',
+    );
+    await f.writeAsBytes(area);
+    return f;
+  }
+
+  static Future<File> _inKeepDir(String name) async {
     final Directory docs = await getApplicationDocumentsDirectory();
     final Directory dir = Directory(
       '${docs.path}${Platform.pathSeparator}Pocket AMP Upgrader',
     );
     await dir.create(recursive: true);
-    final File f = File(
-      '${dir.path}${Platform.pathSeparator}${backup.suggestedFileName}',
-    );
-    await f.writeAsString(backup.toJson());
-    return f;
+    return File('${dir.path}${Platform.pathSeparator}$name');
   }
 }

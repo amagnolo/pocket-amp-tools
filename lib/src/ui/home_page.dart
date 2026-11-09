@@ -206,8 +206,12 @@ class _HomePageState extends State<HomePage> {
   Future<void> _confirmAndUpdate() async {
     final bool? go = await showDialog<bool>(
       context: context,
-      builder: (BuildContext context) =>
-          _ConfirmDialog(from: _pedal!.identity, to: _package!.product),
+      builder: (BuildContext context) => _ConfirmDialog(
+        from: _pedal!.identity,
+        to: _package!.product,
+        rebrand: _pedal!.rebrand,
+        family: _pedal!.family,
+      ),
     );
     if (go != true) {
       return;
@@ -222,14 +226,31 @@ class _HomePageState extends State<HomePage> {
         setState(
           () => _progress = const UpdateProgress(UpdatePhase.backup, null),
         );
-        final PresetBackup b = await _presets.backup(
-          _pedal!,
-          onProgress: (double f) =>
-              setState(() => _progress = UpdateProgress(UpdatePhase.backup, f)),
-        );
-        final File copy = await PresetService.keepCopy(b);
-        _addLog('Presets backed up to ${copy.path}');
-        setState(() => _preUpdateBackup = b);
+        try {
+          final PresetBackup b = await _presets.backup(
+            _pedal!,
+            onProgress: (double f) => setState(
+              () => _progress = UpdateProgress(UpdatePhase.backup, f),
+            ),
+          );
+          final File copy = await PresetService.keepCopy(b);
+          _addLog('Presets backed up to ${copy.path}');
+          setState(() => _preUpdateBackup = b);
+        } on UnknownPresetLayout catch (e) {
+          // A rebrand on old firmware (PIXIE1 V0.07) keeps presets in another
+          // layout; they cannot be restored on Pocket AMP firmware anyway.
+          if (_pedal!.rebrand == null) {
+            rethrow;
+          }
+          final File raw = await PresetService.keepRaw(
+            _pedal!.identity,
+            e.area,
+          );
+          _addLog(
+            'Presets are not in the Pocket AMP layout (${e.message}); '
+            'raw copy kept at ${raw.path}. They will not be restored.',
+          );
+        }
       }
       final String after = await _updater.update(
         _package!,
@@ -278,10 +299,17 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _saveBackup() => _runPresetTask('Saving a backup', () async {
-    final PresetBackup b = await _presets.backup(
-      _pedal!,
-      onProgress: (double f) => setState(() => _presetFraction = f),
-    );
+    final PresetBackup b;
+    try {
+      b = await _presets.backup(
+        _pedal!,
+        onProgress: (double f) => setState(() => _presetFraction = f),
+      );
+    } on UnknownPresetLayout catch (e) {
+      final File raw = await PresetService.keepRaw(_pedal!.identity, e.area);
+      return 'Presets are not in the Pocket AMP layout (${e.message}). '
+          'Raw copy kept at ${raw.path}.';
+    }
     final FileSaveLocation? where = await getSaveLocation(
       suggestedName: b.suggestedFileName,
       acceptedTypeGroups: const <XTypeGroup>[
@@ -564,7 +592,10 @@ class _HomePageState extends State<HomePage> {
       done: p != null,
       children: <Widget>[
         if (p != null) ...<Widget>[
-          _InfoRow('Model', p.family),
+          _InfoRow(
+            'Model',
+            p.rebrand == null ? p.family : '${p.rebrand} (${p.family})',
+          ),
           _InfoRow('Installed', p.inLoader ? 'update mode' : p.version),
           _InfoRow('Port', p.port.name),
           if (p.inLoader)
@@ -707,9 +738,9 @@ class _WarningCard extends StatelessWidget {
               ),
               SizedBox(height: 8),
               Text(
-                '• Your presets are backed up automatically before updating. The '
-                'V1.05 update was seen overwriting P01–P05 and P80 and resetting '
-                'their EQ; the app offers to restore them when it is done.\n'
+                '• A firmware update can overwrite some presets and their EQ. '
+                'The app backs up all 80 first and offers to restore them when '
+                'it is done.\n'
                 '• Charge the battery and use a reliable USB data cable.\n'
                 '• Do not unplug, turn off or let the computer sleep until the '
                 'app says it is done (about 2 minutes).\n'
@@ -865,9 +896,19 @@ class _ResultCard extends StatelessWidget {
 }
 
 class _ConfirmDialog extends StatefulWidget {
-  const _ConfirmDialog({required this.from, required this.to});
+  const _ConfirmDialog({
+    required this.from,
+    required this.to,
+    required this.rebrand,
+    required this.family,
+  });
   final String from;
   final String to;
+
+  /// Set for another brand's unit (e.g. `PIXIE1`), which this turns into a
+  /// [family]; that needs its own, explicit consent.
+  final String? rebrand;
+  final String family;
 
   @override
   State<_ConfirmDialog> createState() => _ConfirmDialogState();
@@ -875,9 +916,14 @@ class _ConfirmDialog extends StatefulWidget {
 
 class _ConfirmDialogState extends State<_ConfirmDialog> {
   bool _understood = false;
+  bool _rebrandUnderstood = false;
+
+  bool get _canGo =>
+      _understood && (widget.rebrand == null || _rebrandUnderstood);
 
   @override
   Widget build(BuildContext context) {
+    final String? rebrand = widget.rebrand;
     return AlertDialog(
       icon: const Icon(Icons.warning_amber_rounded),
       title: const Text('Write new firmware?'),
@@ -891,6 +937,29 @@ class _ConfirmDialogState extends State<_ConfirmDialog> {
             'An interrupted update can leave the pedal unusable. Keep it '
             'connected and powered until the app says it is done.',
           ),
+          if (rebrand != null) ...<Widget>[
+            const SizedBox(height: 12),
+            Text(
+              'This is a $rebrand, sold as a rebranded ${widget.family}. '
+              'There is no $rebrand firmware, so this writes the '
+              '${widget.family} firmware: afterwards the pedal reports itself '
+              'as a ${widget.family} and cannot go back to the $rebrand '
+              'firmware. This has not been tested on a real $rebrand yet; if '
+              'its hardware differs, the pedal may stop working.',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _rebrandUnderstood,
+              onChanged: (bool? v) =>
+                  setState(() => _rebrandUnderstood = v ?? false),
+              title: Text(
+                'Turn my $rebrand into a ${widget.family}. I accept it may '
+                'brick the pedal.',
+              ),
+              controlAffinity: ListTileControlAffinity.leading,
+            ),
+          ],
           const SizedBox(height: 8),
           CheckboxListTile(
             contentPadding: EdgeInsets.zero,
@@ -907,7 +976,7 @@ class _ConfirmDialogState extends State<_ConfirmDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _understood ? () => Navigator.pop(context, true) : null,
+          onPressed: _canGo ? () => Navigator.pop(context, true) : null,
           child: const Text('Update'),
         ),
       ],

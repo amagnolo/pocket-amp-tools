@@ -142,4 +142,20 @@ void main() {
     expect(pedal.writes, isEmpty);
     await s.close();
   });
+  test('unknown layout keeps the raw bytes', () async {
+    final Uint8List flash = bank();
+    flash[eqTableAddress] = 0xFF; // no PATCHEND header, as on PIXIE1 V0.07
+    final PresetSession s = PresetSession(FakeBank(flash));
+    await expectLater(
+      readPresetBank(s, 'PIXIE1_007'),
+      throwsA(
+        isA<UnknownPresetLayout>().having(
+          (UnknownPresetLayout e) => e.area,
+          'area',
+          flash,
+        ),
+      ),
+    );
+    await s.close();
+  });
 }
