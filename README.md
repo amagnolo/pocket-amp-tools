@@ -82,8 +82,8 @@ Before anything is written, the app:
 | Platform | Detection | Full update |
 | --- | --- | --- |
 | Linux | tested with a real pedal; preset backup and restore too | the app's traffic was traced side by side with the Python prototype that updated a real pedal from V1.03 to V1.05: same requests, same answers. A full update by the app itself waits for the next firmware, because the pedal refuses to reinstall the version it already runs |
-| Windows | works: a user's pedal was detected and its presets read ([#2](../../issues/2)) | not yet tested on hardware |
-| macOS | not yet tested on hardware | not yet tested on hardware |
+| Windows | works: a user's pedal was detected and its presets read ([#2](../../issues/2)) | works: a Coolmusic PIXIE1 was updated from V0.07 to Pocket AMP V1.05 ([#2](../../issues/2)); the first attempt stopped in update mode and the second finished |
+| macOS | works: a New Bee SK17 was detected ([#6](../../pull/6)) | works: the same SK17 was updated to Pocket AMP V1.05, with a fork that differs only in which pedals it accepts ([#6](../../pull/6)) |
 
 Reports are very welcome, including "it worked": use the [hardware test report](../../issues/new?template=hardware_report.yml) form.
 
@@ -91,7 +91,7 @@ Reports are very welcome, including "it worked": use the [hardware test report](
 
 This is a community project and the next step depends on owners of the pedal:
 
-- **Windows and macOS testers.** Open the app with your pedal connected and [tell us what you see](../../issues/new?template=hardware_report.yml). Detection alone is already useful.
+- **Windows and macOS testers, especially with an M-VAVE Pocket AMP.** So far only clones have been updated on those systems. Open the app with your pedal connected and [tell us what you see](../../issues/new?template=hardware_report.yml). Detection alone is already useful.
 - **Bug reports** with the log from **Details → Copy for a bug report** ([form](../../issues/new?template=bug_report.yml)).
 - **Questions, tips and other pedals** go to [Discussions](../../discussions).
 - **Code and docs**: see [CONTRIBUTING.md](CONTRIBUTING.md). Translations of this README are welcome.
