@@ -173,9 +173,16 @@ class FirmwarePackage {
 ///
 /// The Coolmusic PIXIE1 manual is the Pocket AMP manual relabelled (its print
 /// sheet is titled "POCKET AMP", the text still says "using the POCKET AMP as
-/// a sound card", and it pairs with M-VAVE's M-EFCS app). Not yet confirmed
-/// by flashing a real unit.
-const Map<String, String> rebrands = <String, String>{'PIXIE1': 'Pocket AMP'};
+/// a sound card", and it pairs with M-VAVE's M-EFCS app). An owner flashed a
+/// real unit to V1.05 (#2).
+///
+/// The New Bee SK17 looks and behaves like a Pocket AMP, works with M-EFCS and
+/// comes with what appears to be the same M-UPGRADE tool. An owner flashed a
+/// real unit to V1.05.
+const Map<String, String> rebrands = <String, String>{
+  'PIXIE1': 'Pocket AMP',
+  'SK17': 'Pocket AMP',
+};
 
 /// The name the pedal itself reports: `PIXIE1` for `PIXIE1_007`.
 String reportedFamilyOf(String identity) {

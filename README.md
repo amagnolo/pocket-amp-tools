@@ -46,13 +46,14 @@ The same pedal is sold under other brands, and each reports its own name. The ap
 | Clone | Reports | Status |
 | --- | --- | --- |
 | Coolmusic PIXIE1 | `PIXIE1_007` | updated to V1.05 by an owner ([#2](../../issues/2)) |
+| New Bee SK17 | `SK17_006` | updated to V1.05 by an owner |
 
 Have a clone that is not listed? Open the app, copy the log from **Details**, and send it with the [hardware test report](../../issues/new?template=hardware_report.yml) form.
 
 Know before you cross-flash a clone:
 
 - afterwards the pedal reports itself as a Pocket AMP, and there may be no firmware of the original brand to go back to;
-- older clone firmware (PIXIE1 V0.07, for example) has no preset EQ table, so its presets **are not restored**. The app keeps a raw copy (`raw-<pedal>-<date>.bin` in `Documents/Pocket AMP Upgrader`) and continues;
+- older clone firmware (PIXIE1 V0.07, for example) has no preset EQ table, so its presets **are not restored**. The app keeps a raw copy (`raw-<pedal>-<date>.bin` in `Documents/Pocket AMP Upgrader`) and asks before continuing;
 - after updating from V0.07, M-VAVE says to switch to Speaker mode and load the Speaker mode preset in M-EFCS to get sound.
 
 ### "Already runs this version"

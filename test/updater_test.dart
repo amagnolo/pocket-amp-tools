@@ -85,6 +85,12 @@ void main() {
       expect(familyOf('FM-1_015'), 'FM-1');
     });
 
+    test('an SK17 is a Pocket AMP under another name', () {
+      expect(familyOf('SK17_006'), 'Pocket AMP');
+      expect(familyOf('ota-SK17_006'), 'Pocket AMP');
+      expect(rebrandOf('SK17_006'), 'SK17');
+    });
+
     test('parses a synthetic package', () {
       final FirmwarePackage p = FirmwarePackage.parse(
         buildFwsc(loader: loader),
@@ -257,6 +263,55 @@ void main() {
       expect(up.blockers(pkg, found), isEmpty);
       expect(await up.update(pkg, found, (_) {}), 'Pocket AMP_105');
       expect(pedal.flashReceived, pkg.image);
+    });
+
+    test('an SK17 goes through a loader that keeps its own name', () async {
+      final FakePedal pedal = FakePedal(image: pkg.image, identity: 'SK17_006');
+      final List<String> log = <String>[];
+      final PedalUpdater up = updater(pedal, log);
+      final DetectedPedal found = (await up.detect())!;
+      expect(found.rebrand, 'SK17');
+      expect(up.blockers(pkg, found), isEmpty);
+      expect(await up.update(pkg, found, (_) {}), 'Pocket AMP_105');
+      expect(log, contains(contains('Found "ota-SK17_006"')));
+      expect(pedal.loaderReceived, pkg.image);
+      expect(pedal.flashReceived, pkg.image);
+    });
+
+    test('an SK17 resumes from its own update mode', () async {
+      final FakePedal pedal = FakePedal(
+        image: pkg.image,
+        identity: 'ota-SK17_006',
+      );
+      final PedalUpdater up = updater(pedal);
+      final DetectedPedal found = (await up.detect())!;
+      expect(found.inLoader, isTrue);
+      expect(found.rebrand, 'SK17');
+      expect(await up.update(pkg, found, (_) {}), 'Pocket AMP_105');
+      expect(pedal.loaderReceived, isNull);
+      expect(pedal.flashReceived, pkg.image);
+    });
+
+    test('a pedal that is not on the list stays out', () async {
+      final FakePedal pedal = FakePedal(image: pkg.image, identity: 'FM-1_015');
+      expect(await updater(pedal).detect(), isNull);
+      expect(pedal.arms, 0);
+    });
+
+    test('stops if a different device takes over the port', () async {
+      final FakePedal pedal = FakePedal(image: pkg.image, identity: 'FM-1_015');
+      await expectLater(
+        updater(pedal).update(
+          pkg,
+          const DetectedPedal(
+            MidiPortRef(id: 'pedal', name: 'USB Composite Device'),
+            'SK17_006',
+          ),
+          (_) {},
+        ),
+        throwsA(isA<UpdateException>()),
+      );
+      expect(pedal.arms, 0);
     });
 
     test('blockers refuse the version the pedal already runs', () {
