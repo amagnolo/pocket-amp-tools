@@ -4,7 +4,7 @@ Thanks for helping! Pocket AMP Upgrader is a small community tool, and the most 
 
 ## The most helpful things you can do
 
-1. **Test it on your system and report back.** Windows and macOS have not been tested with a real pedal yet. Even "it detected my pedal" is valuable. Use the [hardware test report](../../issues/new?template=hardware_report.yml) form.
+1. **Test it on your system and report back.** On Windows and macOS only clones (a PIXIE1 and an SK17) have been updated so far; an M-VAVE Pocket AMP on either system is still untested. Even "it detected my pedal" is valuable. Use the [hardware test report](../../issues/new?template=hardware_report.yml) form.
 2. **Report bugs** with the log from **Details → Copy for a bug report** in the app ([bug report form](../../issues/new?template=bug_report.yml)).
 3. **Share what you know** about the pedal, other M-VAVE devices or the JieLi update protocol in [Discussions](../../discussions).
 4. **Improve the docs**: clearer steps, screenshots, translations of the README.
