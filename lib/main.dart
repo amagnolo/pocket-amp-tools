@@ -2,12 +2,16 @@
 
 import 'package:flutter/material.dart';
 
+import 'src/midi/midi_backend.dart';
 import 'src/ui/home_page.dart';
 
 void main() => runApp(const UpgraderApp());
 
 class UpgraderApp extends StatelessWidget {
-  const UpgraderApp({super.key});
+  const UpgraderApp({super.key, this.backend});
+
+  /// Injected in tests and screenshots; the platform backend otherwise.
+  final MidiBackend? backend;
 
   static const Color _seed = Color(0xFFB4531F);
 
@@ -23,7 +27,7 @@ class UpgraderApp extends StatelessWidget {
           brightness: Brightness.dark,
         ),
       ),
-      home: const HomePage(),
+      home: HomePage(backend: backend),
     );
   }
 }

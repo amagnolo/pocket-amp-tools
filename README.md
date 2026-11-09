@@ -10,7 +10,10 @@ Update the **M-VAVE Pocket AMP** guitar pedal firmware (V1.05) over USB from **m
 
 M-VAVE's own updater runs only on Windows and, at the time of writing, its "POCKET AMP" bundle ships an older firmware than the one on the downloads page. This app sends the current `.fwsc` file from M-VAVE over plain USB-MIDI, so it needs no drivers.
 
-![Pocket AMP Upgrader](docs/screenshot.png)
+<picture>
+  <source srcset="docs/screenshot-dark.png" media="(prefers-color-scheme: dark)">
+  <img src="docs/screenshot-light.png" width="480" alt="Pocket AMP Upgrader with a Pocket AMP on V1.03 detected and the official V1.05 package ready to install">
+</picture>
 
 > **Community tool, not affiliated with M-VAVE. Use at your own risk.** A firmware update that is interrupted can leave the pedal unusable.
 

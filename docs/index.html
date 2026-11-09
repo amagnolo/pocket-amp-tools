@@ -13,6 +13,8 @@
 <meta property="og:image" content="https://vitoramaral10.github.io/pocket-amp-upgrader/social-preview.png">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="color-scheme" content="light dark">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -27,7 +29,7 @@
       "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
       "downloadUrl": "https://github.com/vitoramaral10/pocket-amp-upgrader/releases",
       "codeRepository": "https://github.com/vitoramaral10/pocket-amp-upgrader",
-      "screenshot": "https://vitoramaral10.github.io/pocket-amp-upgrader/screenshot.png"
+      "screenshot": "https://vitoramaral10.github.io/pocket-amp-upgrader/screenshot-light.png"
     },
     {
       "@type": "FAQPage",
@@ -103,7 +105,7 @@ h1 { font-size: clamp(32px, 5vw, 52px); line-height: 1.1; letter-spacing: -.02em
 .btn-secondary:hover { background: var(--surface); }
 .btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
 .note { font-size: 14px; color: var(--content-muted); margin: 16px 0 0; }
-.shot { display: block; width: 100%; max-width: 480px; height: auto; border-radius: 12px; border: 1px solid var(--border); }
+.shot { display: block; width: 100%; max-width: 480px; height: auto; }
 section { padding: 48px 0; border-top: 1px solid var(--border); }
 h2 { font-size: 28px; line-height: 1.2; letter-spacing: -.01em; font-weight: 600; margin: 0 0 24px; }
 .grid { display: grid; gap: 48px; align-items: start; }
@@ -135,7 +137,10 @@ code { font-size: .92em; background: var(--surface); padding: 1px 5px; border-ra
         </div>
         <p class="note">Windows 10/11 · macOS 11+ · Linux x64 (AppImage). Community tool, not affiliated with M-VAVE.</p>
       </div>
-      <img class="shot" src="screenshot.png" width="1544" height="1718" alt="Pocket AMP Upgrader window showing a detected Pocket AMP, the firmware package and the Update firmware button">
+      <picture>
+        <source srcset="screenshot-dark.png" media="(prefers-color-scheme: dark)">
+        <img class="shot" src="screenshot-light.png" width="1632" height="2404" alt="Pocket AMP Upgrader window: a Pocket AMP on V1.03 detected, the official V1.05 package verified, and the Update firmware button ready">
+      </picture>
     </div>
   </header>
 
