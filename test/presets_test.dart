@@ -142,7 +142,7 @@ void main() {
     // first knob at 300; a 5-band EQ at the head.
     final int p02 = presetSize;
     a[p02] = 60;
-    a.setAll(p02 + 2, <int>[2, 0, 1, 3, 4, 5]);
+    a.setAll(p02 + 2, <int>[2, 0, 1, 3, 4, 6]); // 6 is not a block
     a[p02 + 8 + 1] = 1;
     a[p02 + 14 + 1] = 7;
     a.setAll(p02 + 20 + 12, <int>[0x2C, 0x01]);
@@ -162,7 +162,7 @@ void main() {
     expect(readable[1], <String, Object>{
       'preset': 'P02',
       'volume': 60,
-      'chain': <String>['MOD', 'FX', 'AMP', 'DLY', 'REV', 'CAB'],
+      'chain': <Object>['MOD', 'FX', 'AMP', 'DLY', 'REV', 6],
       'blocks': <String, Object>{
         for (final String name in blockNames)
           name: <String, Object>{
@@ -204,7 +204,8 @@ void main() {
           isA<PresetIoException>().having(
             (PresetIoException e) => e.message,
             'message',
-            contains('Nothing was written'),
+            'Cannot restore: the EQ of P02 is not a record this app can '
+                'write. Nothing was written to the pedal.',
           ),
         ),
       );
