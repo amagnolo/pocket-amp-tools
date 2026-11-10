@@ -53,11 +53,46 @@ class PresetBackup {
     return Uint8List.sublistView(eq, at, at + eqRecordLength);
   }
 
+  /// The same data as plain fields, for reading and comparing backups.
+  /// Restore never reads it back.
+  List<Map<String, Object>> get readable => <Map<String, Object>>[
+    for (int id = 0; id < presetCount; id++) _readable(id),
+  ];
+
+  Map<String, Object> _readable(int id) {
+    final Uint8List p = preset(id);
+    int le16(int at) => p[at] | (p[at + 1] << 8);
+    return <String, Object>{
+      'preset': 'P${(id + 1).toString().padLeft(2, '0')}',
+      'volume': le16(0),
+      'chain': <Object>[
+        for (final int b in p.sublist(2, 8))
+          b < blockNames.length ? blockNames[b] : b,
+      ],
+      'blocks': <String, Object>{
+        for (int b = 0; b < blockNames.length; b++)
+          blockNames[b]: <String, Object>{
+            'on': p[8 + b] != 0,
+            'model': p[14 + b],
+            'knobs': <int>[
+              for (int k = 0; k < 6; k++) le16(20 + b * 12 + k * 2),
+            ],
+          },
+      },
+      'eq': _readableEq(eqRecord(id)),
+    };
+  }
+
   String toJson() =>
       const JsonEncoder.withIndent('  ').convert(<String, Object>{
         'format': format,
         'pedal': identity,
         'created': created.toUtc().toIso8601String(),
+        'about':
+            'The app restores from "presets" and "eq". "readable" shows the '
+            'same data as plain fields, for reading and comparing; editing it '
+            'changes nothing.',
+        'readable': readable,
         'presets': base64Encode(presets),
         'eq': base64Encode(eq),
       });
@@ -69,6 +104,25 @@ class PresetBackup {
         '${two(t.hour)}${two(t.minute)}${two(t.second)}.json';
   }
 }
+
+/// The six blocks of a preset body, in the order the pedal's screen shows
+/// them. What each model number and knob means is not mapped yet.
+const List<String> blockNames = <String>[
+  'FX',
+  'AMP',
+  'MOD',
+  'DLY',
+  'REV',
+  'CAB',
+];
+
+/// An EQ record: on/off, position in the chain (0 tail, 1 head) and five
+/// bands in the steps the pedal stores.
+Map<String, Object> _readableEq(Uint8List r) => <String, Object>{
+  'on': r[0] != 0,
+  'position': r[1] < 2 ? const <String>['tail', 'head'][r[1]] : r[1],
+  'bands': <int>[for (final int b in r.sublist(2)) b.toSigned(8)],
+};
 
 /// Which slots differ between two backups.
 class PresetDiff {
