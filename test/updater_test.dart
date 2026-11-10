@@ -91,6 +91,13 @@ void main() {
       expect(rebrandOf('SK17_006'), 'SK17');
     });
 
+    test('a Donner Pocket AMP is a Pocket AMP under another name', () {
+      expect(familyOf('DONNER Pocket AMP_008'), 'Pocket AMP');
+      expect(familyOf('ota-DONNER Pocket AMP_008'), 'Pocket AMP');
+      expect(rebrandOf('DONNER Pocket AMP_008'), 'DONNER Pocket AMP');
+      expect(versionOf('DONNER Pocket AMP_008'), '0.08');
+    });
+
     test('parses a synthetic package', () {
       final FirmwarePackage p = FirmwarePackage.parse(
         buildFwsc(loader: loader),
@@ -275,6 +282,19 @@ void main() {
       expect(await up.update(pkg, found, (_) {}), 'Pocket AMP_105');
       expect(log, contains(contains('Found "ota-SK17_006"')));
       expect(pedal.loaderReceived, pkg.image);
+      expect(pedal.flashReceived, pkg.image);
+    });
+
+    test('a Donner Pocket AMP is detected and takes the update', () async {
+      final FakePedal pedal = FakePedal(
+        image: pkg.image,
+        identity: 'DONNER Pocket AMP_008',
+      );
+      final PedalUpdater up = updater(pedal);
+      final DetectedPedal found = (await up.detect())!;
+      expect(found.rebrand, 'DONNER Pocket AMP');
+      expect(up.blockers(pkg, found), isEmpty);
+      expect(await up.update(pkg, found, (_) {}), 'Pocket AMP_105');
       expect(pedal.flashReceived, pkg.image);
     });
 
