@@ -153,3 +153,100 @@ bool isAck(List<int> packet) =>
     packet[2] == 0x00 &&
     packet[3] == 0x01 &&
     packet[7] == 0xFF;
+
+// --- live editing -----------------------------------------------------------
+//
+// The packets below come from the pocket-amp-editor project, where each one
+// was checked byte by byte on a Pocket AMP (probe-pocket-amp experiments).
+// They write only the live RAM of the active preset: switching presets or
+// turning the pedal off brings back what is stored. Every packet is also
+// checked by write_guard.dart before it is sent.
+
+/// Live RAM of the active preset: 92 bytes in the preset body layout.
+Uint8List readLivePacket() => _seal(<int>[
+  0x00, 0x59, 0x23, 0x08, 0x00, 0x00, 0x04, //
+  0x00, 0x00, 0x00, 0x10, presetSize, 0x00, 0x00,
+  0x00,
+]);
+
+/// Model names stored in flash, 20 records of 14 bytes: AMP (`amp` true) or
+/// CAB. Byte 0 of the answer is overwritten by this request's checksum.
+Uint8List readNamesPacket({required bool amp}) => _seal(<int>[
+  0x00, 0x59, 0x23, 0x08, 0x00, 0x00, 0x05, //
+  0x00, 0x00, 0x00, amp ? 0x90 : 0x80, 0x18, 0x01, 0x00,
+  0x00,
+]);
+
+/// Makes [presetId] the active preset, as the pedal's own buttons do.
+Uint8List loadPresetPacket(int presetId) {
+  if (presetId < 0 || presetId >= presetCount) {
+    throw ArgumentError('invalid preset $presetId');
+  }
+  return _seal(<int>[
+    0x00, 0x59, 0x22, 0x09, 0x00, 0x00, 0x04, //
+    presetId, 0x00, 0x00, 0xE0, 0x01, 0x00, 0x00, 0x01,
+    0x00,
+  ]);
+}
+
+/// Knob [k] (0..5) of block position [block] (0..5), 0..100.
+Uint8List changeKnobPacket(int block, int k, int value) {
+  if (block < 0 || block > 5 || k < 0 || k > 5 || value < 0 || value > 100) {
+    throw ArgumentError('invalid knob $block/$k = $value');
+  }
+  return _seal(<int>[
+    0x00, 0x59, 0x22, 0x0A, 0x00, 0x00, 0x04, //
+    20 + block * 12 + k * 2, 0x00, 0x00, 0x10, 0x02, 0x00, 0x00,
+    value, 0x00,
+    0x00,
+  ]);
+}
+
+/// Turns block position [block] (0..5) on or off.
+Uint8List toggleBlockPacket(int block, bool on) {
+  if (block < 0 || block > 5) {
+    throw ArgumentError('invalid block $block');
+  }
+  return _seal(<int>[
+    0x00, 0x59, 0x22, 0x09, 0x00, 0x00, 0x04, //
+    8 + block, 0x00, 0x00, 0x10, 0x01, 0x00, 0x00, on ? 1 : 0,
+    0x00,
+  ]);
+}
+
+/// Changes the model of block position [block]. The pedal resets that
+/// block's knobs to the new model's defaults; read the live RAM after it.
+Uint8List changeModelPacket(int block, int model, int modelCount) {
+  if (block < 0 || block > 5 || model < 0 || model >= modelCount) {
+    throw ArgumentError('invalid model $model for block $block');
+  }
+  return _seal(<int>[
+    0x00, 0x59, 0x22, 0x09, 0x00, 0x00, 0x04, //
+    14 + block, 0x00, 0x00, 0x10, 0x01, 0x00, 0x00, model,
+    0x00,
+  ]);
+}
+
+/// Whether the pedal takes [order] as a new chain. Measured on V1.05: a
+/// Change Routing is acknowledged but ignored unless FX and AMP (positions 0
+/// and 1) are the first two blocks, in either order; the rest is free. Some
+/// stored presets break this (factory P26), and they still load.
+bool pedalTakesChain(List<int> order) =>
+    order.length == 6 &&
+    order.toSet().length == 6 &&
+    order.every((int b) => b >= 0 && b <= 5) &&
+    <int>{order[0], order[1]}.containsAll(<int>[0, 1]);
+
+/// Sets the signal chain: [order] lists the six block positions, each once.
+Uint8List changeRoutingPacket(List<int> order) {
+  if (!pedalTakesChain(order)) {
+    throw ArgumentError(
+      'the chain must list each block once, with FX and AMP first',
+    );
+  }
+  return _seal(<int>[
+    0x00, 0x59, 0x22, 0x0E, 0x00, 0x00, 0x04, //
+    0x02, 0x00, 0x00, 0x10, 0x06, 0x00, 0x00, ...order,
+    0x00,
+  ]);
+}

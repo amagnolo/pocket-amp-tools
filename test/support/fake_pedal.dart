@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:pocket_amp_upgrader/src/firmware_package.dart';
-import 'package:pocket_amp_upgrader/src/midi/midi_backend.dart';
-import 'package:pocket_amp_upgrader/src/ota_protocol.dart';
+import 'package:pocket_amp_tools/src/firmware_package.dart';
+import 'package:pocket_amp_tools/src/midi/midi_backend.dart';
+import 'package:pocket_amp_tools/src/ota_protocol.dart';
+import 'package:pocket_amp_tools/src/presets/block_models.dart';
+import 'package:pocket_amp_tools/src/presets/mefcs.dart';
 
 /// Builds a valid `.fwsc` with a flash image and a loader whose bytes are
 /// [loader]. [product] is interleaved the way M-VAVE packages carry it.
@@ -72,7 +74,46 @@ class FakePedal implements MidiBackend {
     this.stallInFlash = false,
     this.stallInLoader = false,
     this.rebootDelay = const Duration(milliseconds: 30),
+    this.bank,
   });
+
+  /// Preset area (presets + EQ table) answered to M-EFCS reads; saves and
+  /// commits change it. Null: the pedal ignores preset traffic.
+  final Uint8List? bank;
+
+  /// The active preset and its live RAM, changed by live edits.
+  int active = 0;
+  late Uint8List live = bank == null
+      ? Uint8List(presetSize)
+      : Uint8List.fromList(bank!.sublist(0, presetSize));
+
+  /// Names in flash, as stored (index prefix included).
+  List<String> ampNames = <String>[
+    for (final (String n, _) in blockModels['AMP']!) n,
+  ];
+  List<String> cabNames = <String>[
+    for (final (String n, _) in blockModels['CAB']!) n,
+  ];
+
+  /// The IR buffer, and what was copied to each CAB slot.
+  final Uint8List irBuffer = Uint8List(6164);
+  final Map<int, Uint8List> irSlots = <int, Uint8List>{};
+
+  /// Live writes received, as short labels.
+  final List<String> liveWrites = <String>[];
+
+  /// Opens of the pedal's port so far, and how many are open now and at
+  /// most at once (the app must never hold two).
+  int opens = 0;
+  int openNow = 0;
+  int maxOpen = 0;
+
+  /// While set, every send waits for it (a slow pedal).
+  Completer<void>? holdSend;
+
+  /// The open number [holdAt] waits for [hold] before it completes.
+  int? holdAt;
+  Completer<void>? hold;
 
   final Uint8List image;
   String identity;
@@ -115,6 +156,13 @@ class FakePedal implements MidiBackend {
     }
     if (!present) {
       throw const MidiPortGone();
+    }
+    if (++opens == holdAt) {
+      await hold!.future;
+    }
+    openNow++;
+    if (openNow > maxOpen) {
+      maxOpen = openNow;
     }
     return _open = _FakeConnection(this);
   }
@@ -184,6 +232,7 @@ class _FakeConnection implements MidiConnection {
   void _gone() {
     if (!_closed) {
       _closed = true;
+      pedal.openNow--;
       _out.addError(const MidiPortGone());
       _out.close();
     }
@@ -205,6 +254,18 @@ class _FakeConnection implements MidiConnection {
   Future<void> send(Uint8List sysex) async {
     if (_closed) {
       throw const MidiPortGone();
+    }
+    final Completer<void>? h = pedal.holdSend;
+    if (h != null) {
+      await h.future;
+    }
+    final Uint8List? bank = pedal.bank;
+    final Uint8List? p = bank == null ? null : mefcsUnwrap(sysex);
+    // Only flash reads, saves and commits are modelled; other M-EFCS
+    // packets (the detection query, for one) fall through.
+    if (p != null && p.length >= 15 && (p[2] == 0x22 || p[2] == 0x23)) {
+      scheduleMicrotask(() => _out.add(mefcsWrap(bankReply(pedal, p))));
+      return;
     }
     if (_listEq(sysex, armMessage)) {
       pedal.arms++;
@@ -229,6 +290,7 @@ class _FakeConnection implements MidiConnection {
   Future<void> close() async {
     if (!_closed) {
       _closed = true;
+      pedal.openNow--;
       await _out.close();
     }
   }
@@ -244,4 +306,115 @@ bool _listEq(List<int> a, List<int> b) {
     }
   }
   return true;
+}
+
+/// What a Pocket AMP answers to an M-EFCS [packet]: preset area, live RAM
+/// and name reads; saves, commits and live edits get an ack. Saves go
+/// straight to the bank; the RAM mirror of the bank is not modelled.
+List<int> bankReply(FakePedal pedal, Uint8List packet) {
+  final Uint8List bank = pedal.bank!;
+  final int addr = packet[7] | (packet[8] << 8) | (packet[9] << 16);
+  final int len = packet[11] | (packet[12] << 8) | (packet[13] << 16);
+  List<int> answer(List<int> body) {
+    final List<int> r = <int>[
+      0x00, 0x59, 0x23, (body.length + 8) & 0xFF, (body.length + 8) >> 8, 0, //
+      packet[6], ...packet.sublist(7, 14), ...body, 0,
+    ];
+    r[r.length - 1] = mefcsChecksum(r);
+    return r;
+  }
+
+  const List<int> ack = <int>[0, 0x59, 0, 1, 0, 0, 0, 0xFF];
+  if (packet[2] == 0x23) {
+    if (packet[6] == 0x05) {
+      final List<int> names = <int>[
+        for (final String n
+            in packet[10] == 0x90 ? pedal.ampNames : pedal.cabNames)
+          ...List<int>.generate(
+            14,
+            (int i) => i < n.length ? n.codeUnitAt(i) : 0,
+          ),
+      ];
+      names[0] = packet.last; // the pedal stamps the request's checksum here
+      return answer(names);
+    }
+    return answer(
+      packet[10] == 0x10 ? pedal.live : bank.sublist(addr, addr + len),
+    );
+  }
+  if (packet[6] == 0x05) {
+    if (packet.length == 16 && packet[10] == 0xF0) {
+      final int slot = packet[7];
+      pedal.irSlots[slot] = Uint8List.fromList(pedal.irBuffer);
+      final List<int> name = pedal.irBuffer.sublist(4, 18);
+      pedal.cabNames[slot] = String.fromCharCodes(
+        name.takeWhile((int c) => c != 0),
+      );
+    } else if (packet.length != 16) {
+      final int at = packet[7] | (packet[8] << 8);
+      final int n = packet[11] | (packet[12] << 8);
+      pedal.irBuffer.setAll(at, packet.sublist(14, 14 + n));
+    }
+    pedal.liveWrites.add('ir ${packet.length}');
+    return ack;
+  }
+  final int sub = packet[10];
+  if (sub == 0xF0) {
+    return ack; // commit
+  }
+  if (sub == 0xE0) {
+    pedal.active = packet[7];
+    pedal.live = Uint8List.fromList(
+      bank.sublist(packet[7] * presetSize, (packet[7] + 1) * presetSize),
+    );
+    pedal.liveWrites.add('load ${packet[7]}');
+    return ack;
+  }
+  if (sub == 0x10) {
+    final int at = packet[7];
+    final List<int> value = packet.sublist(14, packet.length - 1);
+    pedal.live.setAll(at, value);
+    if (at >= 14 && at <= 19) {
+      // A new model resets that block's knobs to its defaults.
+      final int block = at - 14;
+      for (int k = 0; k < 6; k++) {
+        pedal.live[20 + block * 12 + k * 2] = 50;
+        pedal.live[21 + block * 12 + k * 2] = 0;
+      }
+    }
+    pedal.liveWrites.add('$at=${value.join(',')}');
+    return ack;
+  }
+  bank.setAll(addr, packet.sublist(14, 14 + len));
+  return ack;
+}
+
+/// A preset area that looks like a used pedal: varied models, knobs in
+/// 0..100, chains in the usual order and some EQ.
+Uint8List demoBank() {
+  final Uint8List a = Uint8List(eqTableAddress + eqTableLength)
+    ..setAll(eqTableAddress, eqHeader);
+  const List<int> models = <int>[10, 7, 7, 5, 6, 20];
+  for (int id = 0; id < presetCount; id++) {
+    final int p = id * presetSize;
+    a[p] = 60 + (id * 7) % 30;
+    a.setAll(
+      p + 2,
+      id % 9 == 4 ? <int>[1, 0, 2, 3, 4, 5] : <int>[0, 1, 2, 3, 4, 5],
+    );
+    for (int b = 0; b < 6; b++) {
+      a[p + 8 + b] = (b == 1 || b == 5 || (id + b) % 3 == 0) ? 1 : 0;
+      a[p + 14 + b] = (id * (b + 3) + b) % models[b];
+      for (int k = 0; k < 6; k++) {
+        a[p + 20 + b * 12 + k * 2] = (id * 13 + b * 29 + k * 17) % 101;
+      }
+    }
+    final int e = eqTableAddress + eqHeaderLength + id * eqRecordLength;
+    a.setAll(e, <int>[
+      id % 4 == 0 ? 1 : 0,
+      id % 8 == 0 ? 1 : 0,
+      for (int band = 0; band < 5; band++) (((id + band * 3) % 13) - 6) & 0xFF,
+    ]);
+  }
+  return a;
 }
