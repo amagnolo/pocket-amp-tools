@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: Questions and ideas
-    url: https://github.com/vitoramaral10/pocket-amp-upgrader/discussions
+    url: https://github.com/vitoramaral10/pocket-amp-tools/discussions
     about: Ask questions, share tips and discuss support for other pedals.
   - name: Pedal problems unrelated to this app
     url: https://forum.m-vave.com/

@@ -5,10 +5,10 @@
 // 'flutter create' template.
 
 // The application's name. By default this is also the title of the Flutter window.
-PRODUCT_NAME = Pocket AMP Upgrader
+PRODUCT_NAME = Pocket AMP Tools
 
 // The application's bundle identifier
 PRODUCT_BUNDLE_IDENTIFIER = io.github.vitoramaral10.pocketAmpUpgrader
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 Pocket AMP Upgrader contributors. GPL-3.0.
+PRODUCT_COPYRIGHT = Copyright © 2026 Pocket AMP Tools contributors. GPL-3.0.

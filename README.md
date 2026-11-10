@@ -1,21 +1,24 @@
-# Pocket AMP Upgrader
+# Pocket AMP Tools
 
-[![build](https://github.com/vitoramaral10/pocket-amp-upgrader/actions/workflows/build.yml/badge.svg)](https://github.com/vitoramaral10/pocket-amp-upgrader/actions/workflows/build.yml)
-[![release](https://img.shields.io/github/v/release/vitoramaral10/pocket-amp-upgrader?include_prereleases&sort=semver)](https://github.com/vitoramaral10/pocket-amp-upgrader/releases)
-[![downloads](https://img.shields.io/github/downloads/vitoramaral10/pocket-amp-upgrader/total)](https://github.com/vitoramaral10/pocket-amp-upgrader/releases)
-[![license](https://img.shields.io/github/license/vitoramaral10/pocket-amp-upgrader)](LICENSE)
+[![build](https://github.com/vitoramaral10/pocket-amp-tools/actions/workflows/build.yml/badge.svg)](https://github.com/vitoramaral10/pocket-amp-tools/actions/workflows/build.yml)
+[![release](https://img.shields.io/github/v/release/vitoramaral10/pocket-amp-tools?include_prereleases&sort=semver)](https://github.com/vitoramaral10/pocket-amp-tools/releases)
+[![downloads](https://img.shields.io/github/downloads/vitoramaral10/pocket-amp-tools/total)](https://github.com/vitoramaral10/pocket-amp-tools/releases)
+[![license](https://img.shields.io/github/license/vitoramaral10/pocket-amp-tools)](LICENSE)
 ![platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-informational)
 
-Update the firmware of the **M-VAVE Pocket AMP** guitar pedal (V1.05) over USB from **macOS, Linux or Windows**, with the official firmware file from M-VAVE. The goal is every Pocket AMP, whatever brand is printed on it: clones sold under other names, such as the Coolmusic PIXIE1, are supported too. Website: <https://vitoramaral10.github.io/pocket-amp-upgrader/>
+Update the firmware of the **M-VAVE Pocket AMP** guitar pedal (V1.05) over USB from **macOS, Linux or Windows**, with the official firmware file from M-VAVE. The goal is every Pocket AMP, whatever brand is printed on it: clones sold under other names, such as the Coolmusic PIXIE1, are supported too. Website: <https://vitoramaral10.github.io/pocket-amp-tools/>
 
 M-VAVE's own updater runs only on Windows and, at the time of writing, its "POCKET AMP" bundle ships an older firmware than the one on the downloads page. This app sends the current `.fwsc` file from M-VAVE over plain USB-MIDI, so it needs no drivers.
 
 <picture>
   <source srcset="docs/screenshot-dark.png" media="(prefers-color-scheme: dark)">
-  <img src="docs/screenshot-light.png" width="480" alt="Pocket AMP Upgrader with a Pocket AMP on V1.03 detected and the official V1.05 package ready to install">
+  <img src="docs/screenshot-light.png" width="720" alt="Pocket AMP Tools: the preset editor with the 80 presets, the signal chain, and each block's model and knobs, played live on the pedal">
 </picture>
 
 > **Community tool, not affiliated with M-VAVE. Use at your own risk.** A firmware update that is interrupted can leave the pedal unusable.
+
+
+> Formerly **Pocket AMP Upgrader**: it grew from a firmware updater into a preset editor, and was renamed.
 
 ## Download
 
@@ -23,16 +26,16 @@ Get the build for your system from the newest entry on the [releases page](../..
 
 | System | File | How to run |
 | --- | --- | --- |
-| Windows 10/11 (x64) | `pocket-amp-upgrader-windows-x64.zip` | Unzip, run `pocket-amp-upgrader.exe`. If SmartScreen warns, choose *More info → Run anyway*. |
-| macOS 11+ | `pocket-amp-upgrader-macos.zip` | Unzip, then right-click *Pocket AMP Upgrader* → *Open* (the app is not signed). |
-| Linux (x64) | `Pocket_AMP_Upgrader-x86_64.AppImage` | `chmod +x` it and run it. Or use `pocket-amp-upgrader-linux-x64.tar.gz`. Needs GTK 3 and ALSA (`libasound2`). |
+| Windows 10/11 (x64) | `pocket-amp-tools-windows-x64.zip` | Unzip, run `pocket-amp-tools.exe`. If SmartScreen warns, choose *More info → Run anyway*. |
+| macOS 11+ | `pocket-amp-tools-macos.zip` | Unzip, then right-click *Pocket AMP Tools* → *Open* (the app is not signed). |
+| Linux (x64) | `Pocket_AMP_Tools-x86_64.AppImage` | `chmod +x` it and run it. Or use `pocket-amp-tools-linux-x64.tar.gz`. Needs GTK 3 and ALSA (`libasound2`). |
 
 ## How to update
 
 1. Know that a firmware update can overwrite some presets and their EQ. The app backs up all 80 presets and their EQ automatically before updating, and you can also save a backup to a file at any time.
 2. Charge the pedal, connect it with a USB **data** cable and turn it on.
 3. Close the M-VAVE app and anything else that uses MIDI (DAWs, browser tabs with Web MIDI).
-4. Open Pocket AMP Upgrader. It detects the pedal and shows the installed version.
+4. Open Pocket AMP Tools. It detects the pedal and shows the installed version.
 5. Click **Download from M-VAVE** (fetches the official file from M-VAVE's server) or **Open .fwsc file…** if you already have it.
 6. Click **Update firmware**, confirm, and wait about two minutes. The pedal restarts twice: once into update mode, once into the new firmware.
 7. Click **Restore my presets from before the update**. Only the presets and EQ that changed are written back, and the result is read back to check it.
@@ -53,7 +56,7 @@ Have a clone that is not listed? Open the app, copy the log from **Details**, an
 Know before you cross-flash a clone:
 
 - afterwards the pedal reports itself as a Pocket AMP, and there may be no firmware of the original brand to go back to;
-- older clone firmware (PIXIE1 V0.07, for example) has no preset EQ table, so its presets **are not restored**. The app keeps a raw copy (`raw-<pedal>-<date>.bin` in `Documents/Pocket AMP Upgrader`) and asks before continuing;
+- older clone firmware (PIXIE1 V0.07, for example) has no preset EQ table, so its presets **are not restored**. The app keeps a raw copy (`raw-<pedal>-<date>.bin` in `Documents/Pocket AMP Tools`) and asks before continuing;
 - after updating from V0.07, M-VAVE says to switch to Speaker mode and load the Speaker mode preset in M-EFCS to get sound.
 
 ### "Already runs this version"
@@ -64,11 +67,23 @@ The Pocket AMP does not reinstall the firmware it already has: it reads the pack
 
 Do not unplug the pedal in a hurry. If the app says the pedal did not come back, reconnect it, open the app again and click **Detect pedal**. A pedal waiting in update mode shows up as *update mode*, and **Resume update** writes the firmware again from there.
 
-## Preset backups
+## Presets
 
-The **Presets** card saves all 80 presets and their EQ to a `.json` file and restores one. A restore writes only what differs from the pedal and then reads everything back to confirm. The backup taken automatically before each update is also kept in `Documents/Pocket AMP Upgrader`.
+The **Presets** section reads all 80 presets and their EQ from the pedal and lets you edit them: volume, the order of the signal chain, each block's on/off, model and knobs, and the EQ. AMP and CAB model names are read from the pedal, so models you uploaded show with their own names.
 
-The file can be read and compared in a text editor or with `git diff`. Next to the raw data it lists every preset as plain fields:
+The chain keeps FX and AMP in its first two places (in either order); the other four blocks go in any order. A V1.05 pedal acknowledges and ignores any other order, so the editor does not offer it.
+
+With **Live on pedal** (on by default), selecting a preset plays it on the pedal, and each change to a block, model, knob or the chain is heard as you make it. Live changes are not stored: switching presets on the pedal or turning it off brings back what is saved. Volume and EQ have no live command and are heard after writing. Changing a model resets that block's knobs to the new model's defaults, as on the pedal itself.
+
+**Write to pedal** stores only the presets that changed, then reads everything back to confirm. If the pedal changed since its presets were read (a preset saved on the pedal, or another unit plugged in), nothing is written and the app asks for a new read. Every write is read back before it is stored, and is stored even when nothing differed, so a write whose storing step was lost is completed by the next one. Reading again, opening a file or closing the app with edits not on the pedal asks first. A preset can be copied as JSON and pasted back.
+
+**Ask the assistant** (the ✨ button on a preset) sends your request and the preset to an AI service you choose: any address that speaks the OpenAI chat-completions format, with your own model and key (kept on your computer, in plain text). The answer goes into the editor, is checked like a backup file, and is heard live; nothing is stored until you write.
+
+The **Cabinets** section lists the 20 CAB slots and puts your own IR in one: WAV, 44.1 kHz, mono, 24-bit, 2048 samples (the one format whose upload was measured). This writes to the pedal's flash, and the IR that was in the slot is gone for good: the app cannot read IRs back. That an uploaded IR survives turning the pedal off is not yet confirmed.
+
+The **Backups** section lists the backups the app keeps in `Documents/Pocket AMP Tools` (one is taken automatically before each firmware update), and opens or restores any of them. Backups made when the app was called Pocket AMP Upgrader stay in `Documents/Pocket AMP Upgrader` and are listed too.
+
+A backup file lists every preset as plain fields, and the app restores from those fields, so a file edited by hand or by another tool goes back to the pedal:
 
 ```json
 {
@@ -76,22 +91,48 @@ The file can be read and compared in a text editor or with `git diff`. Next to t
   "volume": 60,
   "chain": ["FX", "AMP", "MOD", "DLY", "REV", "CAB"],
   "blocks": {
-    "AMP": { "on": true, "model": 7, "knobs": [50, 60, 45, 55, 50, 0] }
+    "AMP": {
+      "on": true,
+      "model": "8DARKS_DS",
+      "knobs": { "Gain": 50, "Level": 60, "Bass": 45, "Mid": 55, "Treble": 50, "knob6": 0 }
+    }
   },
   "eq": { "on": true, "position": "tail", "bands": [2, 0, -1, 0, 3] }
 }
 ```
 
-Every preset lists all six blocks; the example shows one. Models and knobs are numbers for now: their names are not mapped yet. The block names follow the order on the pedal's screen and are not confirmed for every position. The restore reads only the raw data (`presets` and `eq`), so editing the `readable` part changes nothing.
+Some presets keep an EQ in a form the pedal stores but Save EQ does not take (position `0x80`, seen on factory presets); the editor shows it as is and offers to reset it to off and flat instead of editing it.
+
+Every preset lists all six blocks; the example shows one. Knobs go from 0 to 100 and EQ bands from -6 to 6. `knobN` is a stored value the model does not use; it is kept so nothing is lost. Changing a model needs that model's knob names, and a file the pedal cannot take is refused before anything is written, naming the preset and field. Model and knob names follow firmware V1.05 (list collected in [#11](../../issues/11)); the block order and model numbers are not yet confirmed on a pedal for every position. Backups saved by earlier versions (`presets@1`) still restore. A file records which model list named it (`"models"`); a file named with another list is refused rather than restored as different bytes.
+
+### Bluetooth (Linux)
+
+On Linux the app also finds the pedal over Bluetooth, through M-VAVE's own GATT service and BlueZ. Over Bluetooth you can read, edit (live too) and write presets; firmware updates and IR uploads need the USB cable, and the firmware version is not shown. This was checked on a pedal for reads and live edits; writing presets over Bluetooth is read back and checked like over USB.
+
+The app never starts pairing, and only uses a pedal paired with this computer (a neighbour's pedal nearby is ignored). Pair it once in a terminal, then click **Detect again**:
+
+```sh
+bluetoothctl
+> scan on          # wait for "Pocket AMP_BLE", note its address
+> scan off
+> pair  <address>
+> trust <address>
+> quit
+```
 
 ## Safety checks
 
 Before anything is written, the app:
 
 - validates the whole `.fwsc` package (header, directory and CRC of every entry, chip `AC791N`);
-- only accepts packages for the Pocket AMP (also on a listed clone), and only the update loader (`ota.bin`) whose SHA-256 is known (`ef1f2db8…`, the one in the official V1.05 package);
+- only accepts packages made for the Pocket AMP itself (a clone vendor's own package is refused, even for a clone), and only the update loader (`ota.bin`) whose SHA-256 is known (`ef1f2db8…`, the one in the official V1.05 package);
+- knows the official package by its SHA-256 (V1.05: `9584e81d…`); any other package needs an extra confirmation, since only its update loader can be checked;
+- updates only the exact pedal that was confirmed, and with two pedals plugged in never takes the other one for the pedal coming back;
 - checks that the pedal on the USB port says it is a Pocket AMP (or a listed clone) before arming the transfer;
 - only asks the pedal for its identity when it opens; presets are read only when you start an update or save a backup, and nothing is written until you confirm.
+- checks every packet to the pedal against the exact shapes measured on a Pocket AMP before it is sent (reads of the preset area, live edits of the active preset, saving presets and EQ, the IR upload) and refuses anything else, so a bug cannot write somewhere new;
+- closes the live editing connection before any other operation, and never edits live during a firmware update;
+- sends nothing but preset traffic over Bluetooth: firmware updates and IR uploads are refused there.
 
 ## Status
 
@@ -118,7 +159,7 @@ If the app helped you, a ⭐ makes it easier for other Pocket AMP owners to find
 
 - **No pedal found.** Try another cable (many are charge-only) and another USB port. Make sure no other app has the MIDI port open. On Linux your user needs access to `/dev/snd/midi*` (usually the `audio` group or a desktop session).
 - **"Could not open MIDI output" on Windows.** Another app owns the port; Windows lets only one app open a MIDI device at a time.
-- **macOS says the app is damaged.** Run `xattr -dr com.apple.quarantine "Pocket AMP Upgrader.app"` once.
+- **macOS says the app is damaged.** Run `xattr -dr com.apple.quarantine "Pocket AMP Tools.app"` once.
 
 ## How it works
 
