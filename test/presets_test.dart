@@ -182,6 +182,37 @@ void main() {
     expect(PresetBackup.fromJson(jsonEncode(file)).presets, b.presets);
   });
 
+  test(
+    'a record the app cannot write stops the restore before any write',
+    () async {
+      final FakeBank pedal = FakeBank(bank());
+      final PresetSession s = PresetSession(pedal);
+      final PresetBackup saved = await readPresetBank(s, 'x');
+      // The backup differs in a preset and in the EQ of P02, which has a
+      // band out of range.
+      final Uint8List eq = Uint8List.fromList(saved.eq)
+        ..setAll(eqHeaderLength + eqRecordLength, <int>[1, 0, 7, 0, 0, 0, 0]);
+      final PresetBackup odd = PresetBackup(
+        identity: 'x',
+        created: saved.created,
+        presets: Uint8List.fromList(saved.presets)..[0] ^= 1,
+        eq: eq,
+      );
+      await expectLater(
+        restorePresetBank(s, odd),
+        throwsA(
+          isA<PresetIoException>().having(
+            (PresetIoException e) => e.message,
+            'message',
+            contains('Nothing was written'),
+          ),
+        ),
+      );
+      expect(pedal.writes, isEmpty);
+      await s.close();
+    },
+  );
+
   test('restore with nothing to do writes nothing', () async {
     final FakeBank pedal = FakeBank(bank());
     final PresetSession s = PresetSession(pedal);
