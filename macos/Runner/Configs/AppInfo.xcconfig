@@ -8,6 +8,9 @@
 PRODUCT_NAME = Pocket AMP Tools
 
 // The application's bundle identifier
+// Kept from the Pocket AMP Upgrader days: the sandbox keeps each app's
+// data (backups, settings) under its bundle id, so changing it would hide
+// them from users updating the app.
 PRODUCT_BUNDLE_IDENTIFIER = io.github.vitoramaral10.pocketAmpUpgrader
 
 // The copyright displayed in application information
