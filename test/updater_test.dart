@@ -2,10 +2,10 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pocket_amp_upgrader/src/firmware_package.dart';
-import 'package:pocket_amp_upgrader/src/midi/midi_backend.dart';
-import 'package:pocket_amp_upgrader/src/ota_protocol.dart';
-import 'package:pocket_amp_upgrader/src/pedal_updater.dart';
+import 'package:pocket_amp_tools/src/firmware_package.dart';
+import 'package:pocket_amp_tools/src/midi/midi_backend.dart';
+import 'package:pocket_amp_tools/src/ota_protocol.dart';
+import 'package:pocket_amp_tools/src/pedal_updater.dart';
 
 import 'support/fake_pedal.dart';
 
@@ -143,6 +143,73 @@ void main() {
       trustedLoaders: trusted,
       log: log?.add,
     );
+
+    test('a package the app does not know has no official name', () {
+      expect(pkg.officialName, isNull);
+      expect(
+        officialPackages.keys,
+        contains(
+          '9584e81da98215e8e70ddffc28311423ceaa1a5a8a12a478dc68f4679e10902b',
+        ),
+      );
+    });
+
+    test('a clone vendor package is refused', () {
+      final FirmwarePackage sk = FirmwarePackage.parse(
+        buildFwsc(product: 'SK17_007', loader: loader),
+      );
+      expect(sk.isSupportedProduct, isFalse);
+      expect(
+        updater(FakePedal(image: sk.image)).blockers(
+          sk,
+          const DetectedPedal(
+            MidiPortRef(id: 'pedal', name: 'Pocket AMP'),
+            'Pocket AMP_103',
+          ),
+        ),
+        isNotEmpty,
+      );
+    });
+
+    test('update refuses a pedal other than the one confirmed', () async {
+      final FakePedal pedal = FakePedal(image: pkg.image, identity: 'SK17_006');
+      await expectLater(
+        updater(pedal).update(
+          pkg,
+          const DetectedPedal(
+            MidiPortRef(id: 'pedal', name: 'Pocket AMP'),
+            'Pocket AMP_103',
+          ),
+          (_) {},
+        ),
+        throwsA(isA<UpdateException>()),
+      );
+      expect(pedal.arms, 0);
+    });
+
+    test('another pedal plugged in is not taken for the updated one', () async {
+      final FakePedal a = FakePedal(
+        image: pkg.image,
+        rebootDelay: const Duration(milliseconds: 600),
+      );
+      final FakePedal b = FakePedal(
+        image: pkg.image,
+        identity: 'Pocket AMP_105',
+      );
+      final PedalUpdater up = PedalUpdater(
+        _Two(a, b),
+        timings: fast,
+        trustedLoaders: trusted,
+      );
+      final String result = await up.update(
+        pkg,
+        DetectedPedal(a.port, 'Pocket AMP_103'),
+        (_) {},
+      );
+      expect(result, 'Pocket AMP_105');
+      expect(a.present, isTrue, reason: 'it waited for this pedal');
+      expect(a.flashReceived, pkg.image);
+    });
 
     test('serves both phases and resumes on the rebooted port', () async {
       final FakePedal pedal = FakePedal(image: pkg.image);
@@ -341,4 +408,21 @@ void main() {
       expect(reasons, hasLength(3));
     });
   });
+}
+
+/// Two pedals on one bus: [a] on its own ports, [b] on port "b".
+class _Two implements MidiBackend {
+  _Two(this.a, this.b);
+  final FakePedal a;
+  final FakePedal b;
+
+  @override
+  Future<List<MidiPortRef>> listPorts() async => <MidiPortRef>[
+    ...await a.listPorts(),
+    if (b.present) MidiPortRef(id: 'b', name: b.port.name),
+  ];
+
+  @override
+  Future<MidiConnection> open(MidiPortRef p) =>
+      p.id == 'b' ? b.open(b.port) : a.open(p);
 }
