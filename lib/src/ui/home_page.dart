@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
@@ -13,8 +14,15 @@ import 'package:http/http.dart' as http;
 import '../firmware_package.dart';
 import '../midi/midi_backend.dart';
 import '../pedal_updater.dart';
+import '../presets/live_link.dart';
 import '../presets/preset_backup.dart';
 import '../presets/preset_service.dart';
+import '../presets/preset_session.dart';
+import '../net/capped_http.dart';
+import '../presets/ir_upload.dart';
+import 'backups_page.dart';
+import 'cabinets_page.dart';
+import 'presets_page.dart';
 
 /// Official download link published on M-VAVE's downloads page. The file is
 /// fetched from M-VAVE's own server; this app never redistributes it.
@@ -52,6 +60,23 @@ class _HomePageState extends State<HomePage> {
   UpdateProgress? _progress;
   String? _resultMessage;
 
+  final PresetWorkspace _workspace = PresetWorkspace();
+
+  /// 0 presets, 1 cabinets, 2 firmware, 3 backups.
+  int _section = 0;
+
+  /// Whether the user wants edits played on the pedal; the link itself is
+  /// closed around every other pedal operation.
+  bool _wantLive = true;
+
+  /// Bumped by [_stopLive]: a live link that finishes opening after a stop
+  /// (for example, once a firmware update has begun) is closed unused.
+  int _liveGeneration = 0;
+  Future<void>? _liveOpening;
+
+  /// Set while a live link drains and closes: the port is still in use.
+  Future<void>? _liveClosing;
+
   /// Backup taken right before the last update, offered for restoring after.
   PresetBackup? _preUpdateBackup;
   String? _presetTask;
@@ -72,6 +97,8 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    _stopLive();
+    _workspace.dispose();
     _lifecycle.dispose();
     super.dispose();
   }
@@ -79,7 +106,12 @@ class _HomePageState extends State<HomePage> {
   /// Closing the window mid-transfer is the easiest way to brick a pedal.
   Future<AppExitResponse> _onExitRequested() async {
     if (_stage != _Stage.updating && _presetTask == null) {
-      return AppExitResponse.exit;
+      if (_workspace.changed.isEmpty) {
+        return AppExitResponse.exit;
+      }
+      return await _confirmDiscard('Close the app?')
+          ? AppExitResponse.exit
+          : AppExitResponse.cancel;
     }
     final bool? leave = await showDialog<bool>(
       context: context,
@@ -105,12 +137,50 @@ class _HomePageState extends State<HomePage> {
     return leave == true ? AppExitResponse.exit : AppExitResponse.cancel;
   }
 
+  /// True when there are no unsaved edits, or the user lets them go.
+  Future<bool> _confirmDiscard(String title) async {
+    final int n = _workspace.changed.length;
+    if (n == 0) {
+      return true;
+    }
+    final bool? go = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: Text(title),
+        content: Text(
+          '$n edited preset${n == 1 ? ' is' : 's are'} not on the pedal. '
+          'Write them, or save them to a file, to keep them.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Discard my edits'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep editing'),
+          ),
+        ],
+      ),
+    );
+    return go == true;
+  }
+
   void _addLog(String line) {
     final String stamp = DateTime.now().toIso8601String().substring(11, 19);
-    setState(() => _log.add('$stamp  $line'));
+    // The log is copied into public bug reports: no user name in paths.
+    final String? home =
+        Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+    final String shown = home == null || home.isEmpty
+        ? line
+        : line.replaceAll(home, '~');
+    if (mounted) {
+      setState(() => _log.add('$stamp  $shown'));
+    }
   }
 
   bool get _busy =>
+      _liveClosing != null ||
       _stage == _Stage.updating ||
       _detecting ||
       _loadingPackage ||
@@ -144,13 +214,15 @@ class _HomePageState extends State<HomePage> {
   Future<void> _download() async {
     await _loadPackage(() async {
       _addLog('Downloading $officialFirmwareUrl');
-      final http.Response r = await http
-          .get(Uri.parse(officialFirmwareUrl))
-          .timeout(const Duration(seconds: 60));
-      if (r.statusCode != 200) {
-        throw HttpException('HTTP ${r.statusCode}');
+      // The package is about 750 KB; anything past 4 MB is not it.
+      final (int status, Uint8List body) = await sendCapped(
+        http.Request('GET', Uri.parse(officialFirmwareUrl)),
+        4 << 20,
+      );
+      if (status != 200) {
+        throw HttpException('HTTP $status');
       }
-      return r.bodyBytes;
+      return body;
     }, 'M-VAVE download');
   }
 
@@ -183,16 +255,33 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _detect() async {
+    if (_busy) {
+      return;
+    }
+    // Busy before the first await, so nothing else starts meanwhile.
     setState(() {
       _detecting = true;
       _pedal = null;
     });
+    await _stopLive();
     try {
       final DetectedPedal? p = await _updater.detect();
       if (p == null) {
         _addLog('No pedal answered.');
       }
-      setState(() => _pedal = p);
+      // Another pedal (or new firmware) answered: what was read is not
+      // what it holds. No answer at all changes nothing.
+      if (p != null &&
+          _workspace.onPedal != null &&
+          p.identity != _workspace.onPedal!.identity) {
+        _workspace.forgetPedal();
+      }
+      setState(() {
+        _pedal = p;
+        if (p != null && p.inLoader) {
+          _section = 2;
+        }
+      });
     } catch (e) {
       _addLog('Detection failed: $e');
     } finally {
@@ -200,6 +289,7 @@ class _HomePageState extends State<HomePage> {
         _detecting = false;
         _detectedOnce = true;
       });
+      await _startLive();
     }
   }
 
@@ -211,16 +301,19 @@ class _HomePageState extends State<HomePage> {
         to: _package!.product,
         rebrand: _pedal!.rebrand,
         family: _pedal!.family,
+        official: _package!.officialName != null,
       ),
     );
-    if (go != true) {
+    if (go != true || _busy) {
       return;
     }
     setState(() {
       _stage = _Stage.updating;
       _progress = null;
       _resultMessage = null;
+      _preUpdateBackup = null;
     });
+    await _stopLive();
     try {
       if (!_pedal!.inLoader) {
         setState(
@@ -264,6 +357,7 @@ class _HomePageState extends State<HomePage> {
         _pedal!,
         (UpdateProgress p) => setState(() => _progress = p),
       );
+      _workspace.forgetPedal();
       setState(() {
         _stage = _Stage.success;
         _resultMessage = 'The pedal restarted as $after.';
@@ -284,12 +378,16 @@ class _HomePageState extends State<HomePage> {
     String task,
     Future<String> Function() run,
   ) async {
+    if (_busy) {
+      return;
+    }
     setState(() {
       _presetTask = task;
       _presetFraction = null;
       _presetMessage = null;
       _presetError = false;
     });
+    await _stopLive();
     try {
       final String done = await run();
       _addLog(done);
@@ -302,10 +400,94 @@ class _HomePageState extends State<HomePage> {
       });
     } finally {
       setState(() => _presetTask = null);
+      await _startLive();
     }
   }
 
-  Future<void> _saveBackup() => _runPresetTask('Saving a backup', () async {
+  /// Opens the live link when wanted and possible, and plays the selected
+  /// preset as edited.
+  Future<void> _startLive() async {
+    final DetectedPedal? p = _pedal;
+    if (!_wantLive ||
+        _busy ||
+        _workspace.live != null ||
+        _liveOpening != null || // one open at a time
+        p == null ||
+        p.inLoader ||
+        _workspace.onPedal == null ||
+        _stage == _Stage.updating) {
+      return;
+    }
+    final int generation = _liveGeneration;
+    final Completer<void> opening = Completer<void>();
+    _liveOpening = opening.future;
+    try {
+      final LiveLink link = await _presets.openLive(
+        p,
+        onError: (Object e) {
+          _addLog('Live edit failed: $e');
+          if (mounted) {
+            setState(() {
+              _presetMessage = 'Live edit failed: $e';
+              _presetError = true;
+            });
+          }
+        },
+      );
+      if (generation != _liveGeneration || _stage == _Stage.updating) {
+        await link.close();
+      } else {
+        _workspace.live = link;
+        _workspace.showOnPedal();
+      }
+    } catch (e) {
+      _addLog('Live editing not available: $e');
+    } finally {
+      opening.complete();
+      _liveOpening = null;
+    }
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _stopLive() async {
+    _liveGeneration++;
+    await _liveOpening;
+    await _liveClosing;
+    final LiveLink? l = _workspace.live;
+    _workspace.live = null;
+    if (l != null) {
+      final Future<void> closing = l.close();
+      _setClosing(closing);
+      try {
+        await closing;
+      } finally {
+        _setClosing(null);
+      }
+    }
+  }
+
+  void _setClosing(Future<void>? f) {
+    _liveClosing = f;
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _setLive(bool on) async {
+    _wantLive = on;
+    on ? await _startLive() : await _stopLive();
+    setState(() {});
+  }
+
+  Future<void> _readPresets() async {
+    if (await _confirmDiscard('Read the presets again?')) {
+      await _readPresetsNow();
+    }
+  }
+
+  Future<void> _readPresetsNow() => _runPresetTask('Reading presets', () async {
     final PresetBackup b;
     try {
       b = await _presets.backup(
@@ -314,23 +496,34 @@ class _HomePageState extends State<HomePage> {
       );
     } on UnknownPresetLayout catch (e) {
       final File raw = await PresetService.keepRaw(_pedal!.identity, e.area);
-      return 'Presets are not in the Pocket AMP layout (${e.message}). '
-          'Raw copy kept at ${raw.path}.';
+      throw PresetIoException(
+        'Presets are not in the Pocket AMP layout (${e.message}). '
+        'Raw copy kept at ${raw.path}.',
+      );
     }
-    final FileSaveLocation? where = await getSaveLocation(
-      suggestedName: b.suggestedFileName,
-      acceptedTypeGroups: const <XTypeGroup>[
-        XTypeGroup(label: 'Preset backup', extensions: <String>['json']),
-      ],
+    try {
+      final (List<String> amp, List<String> cab) = await _presets.readNames(
+        _pedal!,
+      );
+      _workspace
+        ..ampNames = amp
+        ..cabNames = cab;
+    } catch (e) {
+      _addLog('Model names not read: $e');
+    }
+    _workspace.load(
+      b,
+      'Read from ${_pedal!.identity} at '
+      '${b.created.toLocal().toString().substring(11, 16)}',
+      fromPedal: true,
     );
-    if (where == null) {
-      return 'Backup read, but not saved (no file chosen).';
-    }
-    await File(where.path).writeAsString(b.toJson());
-    return 'Backup of all 80 presets and their EQ saved to ${where.path}.';
+    return 'Read all 80 presets and their EQ.';
   });
 
-  Future<void> _restoreFromFile() async {
+  Future<void> _openPresetFile() async {
+    if (!await _confirmDiscard('Open another file?')) {
+      return;
+    }
     final XFile? file = await openFile(
       acceptedTypeGroups: const <XTypeGroup>[
         XTypeGroup(label: 'Preset backup', extensions: <String>['json']),
@@ -339,20 +532,124 @@ class _HomePageState extends State<HomePage> {
     if (file == null) {
       return;
     }
-    final PresetBackup b;
     try {
-      b = PresetBackup.fromJson(await file.readAsString());
+      _workspace.load(
+        PresetBackup.fromJson(await file.readAsString()),
+        file.name,
+      );
+      setState(() => _presetMessage = null);
     } catch (e) {
       setState(() {
         _presetMessage = 'Not a valid backup: $e';
         _presetError = true;
       });
-      return;
     }
-    await _restore(b, file.name);
   }
 
-  Future<void> _restore(PresetBackup b, String from) async {
+  Future<void> _savePresetFile() => _runPresetTask('Saving a file', () async {
+    final PresetBackup b = _workspace.draft!;
+    final FileSaveLocation? where = await getSaveLocation(
+      suggestedName: b.suggestedFileName,
+      acceptedTypeGroups: const <XTypeGroup>[
+        XTypeGroup(label: 'Preset backup', extensions: <String>['json']),
+      ],
+    );
+    if (where == null) {
+      return 'Not saved (no file chosen).';
+    }
+    await File(where.path).writeAsString(b.toJson());
+    return 'Saved to ${where.path}.';
+  });
+
+  /// Backs up the pedal into the app's backup folder.
+  Future<void> _backupNow() => _runPresetTask('Backing up', () async {
+    final PresetBackup b = await _presets.backup(
+      _pedal!,
+      onProgress: (double f) => setState(() => _presetFraction = f),
+    );
+    final File f = await PresetService.keepCopy(b);
+    return 'Backup kept at ${f.path}.';
+  });
+
+  Future<void> _readNames() => _runPresetTask('Reading names', () async {
+    final (List<String> amp, List<String> cab) = await _presets.readNames(
+      _pedal!,
+    );
+    _workspace
+      ..ampNames = amp
+      ..cabNames = cab;
+    return 'Read the names of the 20 AMP and 20 CAB slots.';
+  });
+
+  Future<void> _replaceIr(int slot) async {
+    final XFile? file = await openFile(
+      acceptedTypeGroups: const <XTypeGroup>[
+        XTypeGroup(label: 'Impulse response', extensions: <String>['wav']),
+      ],
+    );
+    if (file == null) {
+      return;
+    }
+    final Uint8List pcm;
+    try {
+      pcm = parseIrWav(await file.readAsBytes());
+    } on InvalidIrFile catch (e) {
+      setState(() {
+        _presetMessage = '${file.name}: $e';
+        _presetError = true;
+      });
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    final String? name = await confirmIrUpload(
+      context,
+      slot,
+      _workspace.cabNames?[slot] ?? 'slot ${slot + 1}',
+      file.name.replaceAll(RegExp(r'\.wav$', caseSensitive: false), ''),
+    );
+    if (name == null) {
+      return;
+    }
+    await _runPresetTask('Sending the IR', () async {
+      _workspace.cabNames = await _presets.uploadIr(
+        _pedal!,
+        slot,
+        name,
+        pcm,
+        onProgress: (double f) => setState(() => _presetFraction = f),
+      );
+      return 'IR stored in CAB slot ${slot + 1} as "$name".';
+    });
+  }
+
+  Future<void> _editBackup(PresetBackup b, String name) async {
+    if (!await _confirmDiscard('Open this backup?')) {
+      return;
+    }
+    _workspace.load(b, name);
+    setState(() {
+      _presetMessage = null;
+      _section = 0;
+    });
+  }
+
+  /// Writes a frozen copy of the draft, refusing if the pedal changed since
+  /// it was read.
+  Future<void> _writeDraft() => _restore(
+    _workspace.draft!.copy(),
+    'the editor',
+    then: _workspace.written,
+    expected: _workspace.onPedal,
+  );
+
+  Future<void> _restore(
+    PresetBackup b,
+    String from, {
+    void Function(PresetBackup written)? then,
+    PresetBackup? expected,
+  }) async {
     final bool? go = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
@@ -386,149 +683,303 @@ class _HomePageState extends State<HomePage> {
           _presetTask = step;
           _presetFraction = f;
         }),
+        expected: expected,
       );
+      if (then != null) {
+        then(b);
+      } else if (_workspace.onPedal != null) {
+        _workspace.written(b);
+      }
       return d.isEmpty
-          ? 'Nothing to restore: the pedal already matches the backup.'
-          : 'Restored and checked: $d.';
+          ? 'Nothing to write: the pedal already matches.'
+          : 'Written and checked: $d.';
     });
   }
 
   // --- view -----------------------------------------------------------------
 
+  static const List<(IconData, IconData, String)> _sections =
+      <(IconData, IconData, String)>[
+        (Icons.tune_outlined, Icons.tune, 'Presets'),
+        (Icons.speaker_outlined, Icons.speaker, 'Cabinets'),
+        (Icons.system_update_alt_outlined, Icons.system_update_alt, 'Firmware'),
+        (Icons.inventory_2_outlined, Icons.inventory_2, 'Backups'),
+      ];
+
+  void _go(int i) {
+    // The update screen stays up until the pedal is written.
+    if (_stage != _Stage.updating) {
+      setState(() => _section = i);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    return Scaffold(
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: <Widget>[
-              if (_stage == _Stage.updating)
-                _ProgressCard(progress: _progress)
-              else ...<Widget>[
-                if (_stage == _Stage.success || _stage == _Stage.failed)
-                  _ResultCard(
-                    success: _stage == _Stage.success,
-                    message: _resultMessage ?? '',
-                    onDismiss: () => setState(() => _stage = _Stage.idle),
-                    action:
-                        _stage == _Stage.success &&
-                            _preUpdateBackup != null &&
-                            _pedal != null &&
-                            !_pedal!.inLoader &&
-                            !_busy
-                        ? FilledButton.icon(
-                            icon: const Icon(Icons.history),
-                            label: const Text(
-                              'Restore my presets from before the update',
-                            ),
-                            onPressed: () => _restore(
-                              _preUpdateBackup!,
-                              'the backup taken before the update',
-                            ),
-                          )
-                        : null,
-                  ),
-                _firmwareCard(theme),
-                const SizedBox(height: 12),
-                _pedalCard(theme),
-                const SizedBox(height: 12),
-                _presetsCard(theme),
-                const SizedBox(height: 12),
-                const _WarningCard(),
-                const SizedBox(height: 16),
-                for (final String b in _blockers)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      b,
-                      style: TextStyle(color: theme.colorScheme.error),
-                    ),
-                  ),
-                FilledButton.icon(
-                  onPressed: _canUpdate ? _confirmAndUpdate : null,
-                  icon: const Icon(Icons.system_update_alt),
-                  label: Text(
-                    _pedal?.inLoader == true
-                        ? 'Resume update'
-                        : 'Update firmware',
-                  ),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 16),
-              _LogPanel(lines: _log),
-              Align(
-                child: TextButton.icon(
-                  icon: const Icon(Icons.info_outline, size: 18),
-                  label: const Text('About'),
-                  onPressed: () => showAboutDialog(
-                    context: context,
-                    applicationName: 'Pocket AMP Upgrader',
-                    applicationLegalese:
-                        'Community tool, not affiliated with M-VAVE.\n'
-                        'GPL-3.0. Update protocol from M-VAVE\'s FM1 Open '
-                        'project.',
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+    final bool wide = MediaQuery.sizeOf(context).width >= 720;
+    final Widget page = switch (_section) {
+      0 => PresetsPage(
+        workspace: _workspace,
+        canUsePedal: _pedal != null && !_pedal!.inLoader,
+        busy: _busy,
+        task: _presetTask,
+        fraction: _presetFraction,
+        message: _presetMessage,
+        messageIsError: _presetError,
+        onRead: _readPresets,
+        onOpen: _openPresetFile,
+        onSave: _savePresetFile,
+        onWrite: _writeDraft,
+        liveOn: _workspace.live != null,
+        onLive: _setLive,
       ),
+      1 => CabinetsPage(
+        names: _workspace.cabNames,
+        canUsePedal: _pedal != null && !_pedal!.inLoader,
+        irNeedsUsb: _pedal?.port.bluetooth ?? false,
+        busy: _busy,
+        task: _presetTask,
+        fraction: _presetFraction,
+        message: _presetMessage,
+        messageIsError: _presetError,
+        onReadNames: _readNames,
+        onReplace: _replaceIr,
+      ),
+      2 => _firmwarePage(theme),
+      _ => BackupsPage(
+        list: PresetService.kept,
+        canRestore: _pedal != null && !_pedal!.inLoader && !_busy,
+        task: _presetTask,
+        fraction: _presetFraction,
+        message: _presetMessage,
+        messageIsError: _presetError,
+        onEdit: (PresetBackup b, String name) {
+          if (!_busy) {
+            _editBackup(b, name);
+          }
+        },
+        onRestore: (PresetBackup b, String name) => _restore(b, name),
+        onSaveNew: _backupNow,
+      ),
+    };
+    return Scaffold(
+      appBar: _pedalBar(theme),
+      body: wide
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                NavigationRail(
+                  selectedIndex: _section,
+                  onDestinationSelected: _go,
+                  labelType: NavigationRailLabelType.all,
+                  destinations: <NavigationRailDestination>[
+                    for (final (IconData off, IconData on, String label)
+                        in _sections)
+                      NavigationRailDestination(
+                        icon: Icon(off),
+                        selectedIcon: Icon(on),
+                        label: Text(label),
+                      ),
+                  ],
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(child: page),
+              ],
+            )
+          : page,
+      bottomNavigationBar: wide
+          ? null
+          : NavigationBar(
+              selectedIndex: _section,
+              onDestinationSelected: _go,
+              destinations: <NavigationDestination>[
+                for (final (IconData off, IconData on, String label)
+                    in _sections)
+                  NavigationDestination(
+                    icon: Icon(off),
+                    selectedIcon: Icon(on),
+                    label: label,
+                  ),
+              ],
+            ),
     );
   }
 
-  Widget _presetsCard(ThemeData theme) {
-    final bool ready = _pedal != null && !_pedal!.inLoader;
-    return _StepCard(
-      number: 3,
-      title: 'Presets',
-      done: _preUpdateBackup != null,
-      children: <Widget>[
-        const Padding(
-          padding: EdgeInsets.only(bottom: 8),
-          child: Text(
-            'The app backs up all 80 presets and their EQ before updating. '
-            'You can also save a backup to a file or restore one.',
+  /// Always on screen: which pedal is connected and a way to look again.
+  PreferredSizeWidget _pedalBar(ThemeData theme) {
+    final DetectedPedal? p = _pedal;
+    final String title = p == null
+        ? (_detecting ? 'Looking for the pedal…' : 'No pedal connected')
+        : p.rebrand == null
+        ? p.family
+        : '${p.rebrand} (${p.family})';
+    final String subtitle = p == null
+        ? 'Connect it by USB and close other MIDI apps'
+        : p.port.bluetooth
+        ? 'Bluetooth · presets only'
+        : p.inLoader
+        ? 'In update mode · ${p.port.name}'
+        : 'Firmware ${p.version} · ${p.port.name}';
+    return AppBar(
+      backgroundColor: theme.colorScheme.surfaceContainer,
+      titleSpacing: 16,
+      title: Row(
+        children: <Widget>[
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: p == null
+                ? theme.colorScheme.surfaceContainerHighest
+                : theme.colorScheme.primary,
+            foregroundColor: p == null
+                ? theme.colorScheme.onSurfaceVariant
+                : theme.colorScheme.onPrimary,
+            child: Icon(
+              p == null
+                  ? Icons.usb_off
+                  : p.port.bluetooth
+                  ? Icons.bluetooth
+                  : Icons.usb,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(title, style: theme.textTheme.titleMedium),
+                Text(
+                  subtitle,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      actions: <Widget>[
+        if (MediaQuery.sizeOf(context).width >= 720)
+          FilledButton.tonalIcon(
+            onPressed: _busy ? null : _detect,
+            icon: _detecting
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+            label: Text(p == null ? 'Detect pedal' : 'Detect again'),
+          )
+        else
+          IconButton.filledTonal(
+            tooltip: p == null ? 'Detect pedal' : 'Detect again',
+            onPressed: _busy ? null : _detect,
+            icon: const Icon(Icons.refresh),
+          ),
+        const SizedBox(width: 4),
+        IconButton(
+          tooltip: 'Log',
+          icon: Badge(
+            isLabelVisible: _log.isNotEmpty,
+            label: Text('${_log.length}'),
+            child: const Icon(Icons.receipt_long_outlined),
+          ),
+          onPressed: () => showDialog<void>(
+            context: context,
+            builder: (BuildContext context) => Dialog(
+              child: SizedBox(width: 680, child: _LogPanel(lines: _log)),
+            ),
           ),
         ),
-        if (_presetTask != null) ...<Widget>[
-          Text(_presetTask!),
-          const SizedBox(height: 6),
-          LinearProgressIndicator(value: _presetFraction),
-          const SizedBox(height: 8),
-        ] else if (_presetMessage != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              _presetMessage!,
-              style: _presetError
-                  ? TextStyle(color: theme.colorScheme.error)
-                  : null,
-            ),
+        IconButton(
+          tooltip: 'About',
+          icon: const Icon(Icons.info_outline),
+          onPressed: () => showAboutDialog(
+            context: context,
+            applicationName: 'Pocket AMP Tools',
+            applicationLegalese:
+                'Community tool, not affiliated with M-VAVE.\n'
+                'GPL-3.0. Update protocol from M-VAVE\'s FM1 Open '
+                'project.',
           ),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
+        ),
+        const SizedBox(width: 8),
+      ],
+    );
+  }
+
+  Widget _firmwarePage(ThemeData theme) {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: ListView(
+          padding: const EdgeInsets.all(16),
           children: <Widget>[
-            FilledButton.tonalIcon(
-              onPressed: ready && !_busy ? _saveBackup : null,
-              icon: const Icon(Icons.file_download_outlined),
-              label: const Text('Save backup…'),
-            ),
-            OutlinedButton.icon(
-              onPressed: ready && !_busy ? _restoreFromFile : null,
-              icon: const Icon(Icons.history),
-              label: const Text('Restore backup…'),
-            ),
+            if (_stage == _Stage.updating)
+              _ProgressCard(progress: _progress)
+            else ...<Widget>[
+              if (_stage == _Stage.success || _stage == _Stage.failed)
+                _ResultCard(
+                  success: _stage == _Stage.success,
+                  message: _resultMessage ?? '',
+                  onDismiss: () => setState(() => _stage = _Stage.idle),
+                  action:
+                      _stage == _Stage.success &&
+                          _preUpdateBackup != null &&
+                          _pedal != null &&
+                          !_pedal!.inLoader &&
+                          !_busy
+                      ? FilledButton.icon(
+                          icon: const Icon(Icons.history),
+                          label: const Text(
+                            'Restore my presets from before the update',
+                          ),
+                          onPressed: () => _restore(
+                            _preUpdateBackup!,
+                            'the backup taken before the update',
+                          ),
+                        )
+                      : null,
+                ),
+              _firmwareCard(theme),
+              const SizedBox(height: 12),
+              _pedalCard(theme),
+              const SizedBox(height: 12),
+              const _WarningCard(),
+              const SizedBox(height: 16),
+              for (final String b in _blockers)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    b,
+                    style: TextStyle(color: theme.colorScheme.error),
+                  ),
+                ),
+              if (_presetTask != null && _stage == _Stage.idle)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text('$_presetTask…'),
+                ),
+              FilledButton.icon(
+                onPressed: _canUpdate ? _confirmAndUpdate : null,
+                icon: const Icon(Icons.system_update_alt),
+                label: Text(
+                  _pedal?.inLoader == true
+                      ? 'Resume update'
+                      : 'Update firmware',
+                ),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                ),
+              ),
+            ],
           ],
         ),
-      ],
+      ),
     );
   }
 
@@ -544,6 +995,7 @@ class _HomePageState extends State<HomePage> {
           _InfoRow('Version', p.version),
           _InfoRow('Source', _packageSource ?? ''),
           _InfoRow('SHA-256', '${p.sha256.substring(0, 16)}…'),
+          _InfoRow('Package', p.officialName ?? 'not a known official package'),
           _InfoRow(
             'Loader',
             p.hasKnownLoader ? 'known, verified' : 'UNKNOWN (refused)',
@@ -603,7 +1055,14 @@ class _HomePageState extends State<HomePage> {
             'Model',
             p.rebrand == null ? p.family : '${p.rebrand} (${p.family})',
           ),
-          _InfoRow('Installed', p.inLoader ? 'update mode' : p.version),
+          _InfoRow(
+            'Installed',
+            p.port.bluetooth
+                ? 'not known over Bluetooth'
+                : p.inLoader
+                ? 'update mode'
+                : p.version,
+          ),
           _InfoRow('Port', p.port.name),
           if (p.inLoader)
             Padding(
@@ -614,7 +1073,6 @@ class _HomePageState extends State<HomePage> {
                 style: TextStyle(color: theme.colorScheme.tertiary),
               ),
             ),
-          const SizedBox(height: 8),
         ] else
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
@@ -626,21 +1084,6 @@ class _HomePageState extends State<HomePage> {
                         'app that uses MIDI.',
             ),
           ),
-        Wrap(
-          spacing: 8,
-          children: <Widget>[
-            FilledButton.tonalIcon(
-              onPressed: _busy ? null : _detect,
-              icon: _detecting
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.usb),
-              label: Text(p == null ? 'Detect pedal' : 'Detect again'),
-            ),
-          ],
-        ),
       ],
     );
   }
@@ -886,6 +1329,7 @@ class _ResultCard extends StatelessWidget {
               ),
               subtitle: Text(message, style: TextStyle(color: fg)),
               trailing: IconButton(
+                tooltip: 'Dismiss',
                 icon: Icon(Icons.close, color: fg),
                 onPressed: onDismiss,
               ),
@@ -908,9 +1352,14 @@ class _ConfirmDialog extends StatefulWidget {
     required this.to,
     required this.rebrand,
     required this.family,
+    required this.official,
   });
   final String from;
   final String to;
+
+  /// False for a package whose exact content this app does not know: it
+  /// could be a newer official release, or something else wearing its name.
+  final bool official;
 
   /// Set for another brand's unit (e.g. `PIXIE1`), which this turns into a
   /// [family]; that needs its own, explicit consent.
@@ -923,15 +1372,19 @@ class _ConfirmDialog extends StatefulWidget {
 
 class _ConfirmDialogState extends State<_ConfirmDialog> {
   bool _understood = false;
+  bool _unknownUnderstood = false;
   bool _rebrandUnderstood = false;
 
   bool get _canGo =>
-      _understood && (widget.rebrand == null || _rebrandUnderstood);
+      _understood &&
+      (widget.rebrand == null || _rebrandUnderstood) &&
+      (widget.official || _unknownUnderstood);
 
   @override
   Widget build(BuildContext context) {
     final String? rebrand = widget.rebrand;
     return AlertDialog(
+      scrollable: true,
       icon: const Icon(Icons.warning_amber_rounded),
       title: const Text('Write new firmware?'),
       content: Column(
@@ -964,6 +1417,24 @@ class _ConfirmDialogState extends State<_ConfirmDialog> {
                 'Turn my $rebrand into a ${widget.family}. I accept it may '
                 'brick the pedal.',
               ),
+              controlAffinity: ListTileControlAffinity.leading,
+            ),
+          ],
+          if (!widget.official) ...<Widget>[
+            const SizedBox(height: 12),
+            Text(
+              'This is not a firmware package this app knows. It may be a '
+              'newer official release, or a modified file: only the update '
+              'loader inside it was checked. Write it only if it came from '
+              "M-VAVE's own site.",
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _unknownUnderstood,
+              onChanged: (bool? v) =>
+                  setState(() => _unknownUnderstood = v ?? false),
+              title: const Text('I trust where this file came from.'),
               controlAffinity: ListTileControlAffinity.leading,
             ),
           ],
@@ -1001,7 +1472,8 @@ class _LogPanel extends StatelessWidget {
     return Card(
       clipBehavior: Clip.antiAlias,
       child: ExpansionTile(
-        title: const Text('Details'),
+        initiallyExpanded: true,
+        title: const Text('Log'),
         subtitle: Text('${lines.length} log lines'),
         children: <Widget>[
           Align(

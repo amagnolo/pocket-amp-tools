@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping! Pocket AMP Upgrader is a small community tool, and the most useful contributions right now do not need any code.
+Thanks for helping! Pocket AMP Tools is a small community tool, and the most useful contributions right now do not need any code.
 
 ## The most helpful things you can do
 

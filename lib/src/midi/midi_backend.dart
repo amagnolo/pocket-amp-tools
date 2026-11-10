@@ -4,12 +4,18 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'alsa_backend.dart';
+import 'ble/ble_backend.dart';
 import 'coremidi_backend.dart';
 import 'winmm_backend.dart';
 
 /// A bidirectional MIDI port as the operating system names it.
 class MidiPortRef {
-  const MidiPortRef({required this.id, required this.name, this.usbId});
+  const MidiPortRef({
+    required this.id,
+    required this.name,
+    this.usbId,
+    this.bluetooth = false,
+  });
 
   /// Opaque, backend-specific id used to open the port.
   final String id;
@@ -17,6 +23,9 @@ class MidiPortRef {
 
   /// `vendor:product` in lowercase hex, when the backend can tell.
   final String? usbId;
+
+  /// Reached over Bluetooth LE: presets only, never firmware.
+  final bool bluetooth;
 
   @override
   String toString() => usbId == null ? name : '$name [$usbId]';
@@ -56,7 +65,8 @@ abstract class MidiBackend {
 
   static MidiBackend forPlatform() {
     if (Platform.isLinux) {
-      return AlsaBackend();
+      // Bluetooth was checked on a pedal only through BlueZ.
+      return CombinedBackend(AlsaBackend(), BleBackend());
     }
     if (Platform.isWindows) {
       return WinMmBackend();
