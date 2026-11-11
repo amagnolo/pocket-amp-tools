@@ -140,8 +140,11 @@ class BleConnection implements MidiConnection {
           ),
         );
       }
-    } on BleGattException {
+    } catch (_) {
+      // Part of a packet may have reached the pedal: drop the link so it
+      // does not glue the next packet onto it.
       _gone();
+      await _session.disconnect();
       throw const MidiPortGone('(Bluetooth)');
     }
   }
@@ -173,8 +176,14 @@ class BleConnection implements MidiConnection {
       if (_buffer.length < total) {
         return;
       }
+      final Uint8List wrapped = mefcsWrap(_buffer.sublist(0, total));
+      if (mefcsUnwrap(wrapped) == null) {
+        // Bad checksum: a false start, look for the next header.
+        _buffer = _buffer.sublist(1);
+        continue;
+      }
       if (!_out.isClosed) {
-        _out.add(mefcsWrap(_buffer.sublist(0, total)));
+        _out.add(wrapped);
       }
       _buffer = _buffer.sublist(total);
     }
@@ -209,7 +218,11 @@ class CombinedBackend implements MidiBackend {
   @override
   Future<List<MidiPortRef>> listPorts() async => <MidiPortRef>[
     ...await usb.listPorts(),
-    ...await ble.listPorts(),
+    // A stuck BlueZ must not stall detection of a pedal on the cable.
+    ...await ble.listPorts().timeout(
+      const Duration(seconds: 3),
+      onTimeout: () => const <MidiPortRef>[],
+    ),
   ];
 
   @override

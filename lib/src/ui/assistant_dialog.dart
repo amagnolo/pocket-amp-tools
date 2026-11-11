@@ -69,6 +69,17 @@ class _AssistantDialogState extends State<_AssistantDialog> {
     try {
       await _settings.save();
       final Map<String, Object> current = draft.presetFields(id);
+      try {
+        // Checked before asking: a preset the editor cannot take back would
+        // waste the request and the user's tokens.
+        draft.copy().setPresetFields(id, current);
+      } on FormatException catch (e) {
+        _show(
+          'The assistant cannot edit ${slotName(id)}: it holds values this '
+          'app cannot write (${e.message}).',
+        );
+        return;
+      }
       final Map<String, Object?> answer = await askAssistant(
         _settings,
         _request.text.trim(),

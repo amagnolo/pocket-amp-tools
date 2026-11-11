@@ -55,6 +55,7 @@ class _SlowSlotAck implements MidiConnection {
 }
 
 void main() {
+  lateAck();
   test('the guard refuses a Save Preset body outside the firmware ranges', () {
     final Uint8List ok = Uint8List(presetSize)
       ..setAll(2, <int>[0, 1, 2, 3, 4, 5]);
@@ -153,6 +154,19 @@ void main() {
     expect(w.changed, isEmpty);
   });
 
+  test('edits saved to a file or written are no longer unsaved', () {
+    final PresetWorkspace w = PresetWorkspace()
+      ..load(_of(demoBank()), 'x', fromPedal: true);
+    expect(w.unsaved, isEmpty);
+    w.draft!.presets[0] ^= 1;
+    expect(w.unsaved, <int>{0});
+    w.saved();
+    expect(w.unsaved, isEmpty);
+    w.draft!.presets[presetSize] ^= 1;
+    w.written(w.draft!);
+    expect(w.unsaved, isEmpty);
+  });
+
   test('an error handler that throws does not stop the queue', () async {
     final FakePedal pedal = FakePedal(image: Uint8List(1024), bank: demoBank());
     final LiveLink link = LiveLink(
@@ -232,4 +246,44 @@ void main() {
       expect(pedal.opens, 0);
     },
   );
+}
+
+/// Acks the first request 2.1 s late (after the session gave up on it) and
+/// drops [dropped]; acks everything else at once.
+class _LateFirst implements MidiConnection {
+  _LateFirst(this.dropped);
+  final Set<int> dropped;
+  int n = 0;
+  final StreamController<Uint8List> _o = StreamController<Uint8List>();
+  @override
+  Stream<Uint8List> get messages => _o.stream;
+  @override
+  Future<void> send(Uint8List s) async {
+    final int i = n++;
+    if (dropped.contains(i)) {
+      return;
+    }
+    Timer(i == 0 ? const Duration(milliseconds: 2100) : Duration.zero, () {
+      if (!_o.isClosed) {
+        _o.add(mefcsWrap(const <int>[0, 0x59, 0, 1, 0, 0, 0, 0xFF]));
+      }
+    });
+  }
+
+  @override
+  Future<void> close() => _o.close();
+}
+
+void lateAck() {
+  test('a late ack after a retry does not confirm the next write', () async {
+    // Write A is answered only on its retry, then A's first answer comes
+    // late; every attempt of write B is lost.
+    final PresetSession s = PresetSession(_LateFirst(<int>{2, 3, 4}));
+    await s.write(toggleBlockPacket(0, true), 'A');
+    await expectLater(
+      s.write(toggleBlockPacket(1, true), 'B'),
+      throwsA(isA<PresetIoException>()),
+    );
+    await s.close();
+  }, timeout: const Timeout(Duration(seconds: 30)));
 }

@@ -199,7 +199,9 @@ class _ScriptedConnection implements MidiConnection {
     }
     if (listEquals(sysex, armMessage)) {
       bus.arms++;
-      scheduleMicrotask(() => unawaited(Future<void>.sync(() => bus.script(this))));
+      scheduleMicrotask(
+        () => unawaited(Future<void>.sync(() => bus.script(this))),
+      );
     } else if (parseFrame(sysex)?.command == cmdIdentity) {
       await inner.send(sysex);
     } else {

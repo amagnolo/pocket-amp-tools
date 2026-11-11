@@ -11,6 +11,7 @@ import 'package:pocket_amp_tools/src/presets/mefcs.dart';
 /// [loader]. [product] is interleaved the way M-VAVE packages carry it.
 Uint8List buildFwsc({
   String product = 'Pocket AMP_105',
+  int nameSlots = 20,
   required Uint8List loader,
   int flashSize = 16384,
 }) {
@@ -53,13 +54,15 @@ Uint8List buildFwsc({
   image.setAll(0, ufwDecode(hb));
 
   final BytesBuilder raw = BytesBuilder();
-  for (int i = 0; i < 20; i++) {
+  // M-VAVE packages have 20 name slots; a Donner one has 36.
+  assert(product.length <= nameSlots, 'product name longer than its slots');
+  for (int i = 0; i < nameSlots; i++) {
     raw.add(image.sublist(i * 47, i * 47 + 47));
     raw.addByte(
       i < product.length ? (product.codeUnitAt(i) + i + 1) & 0xFF : 125,
     );
   }
-  raw.add(image.sublist(940));
+  raw.add(image.sublist(nameSlots * 47));
   return raw.toBytes();
 }
 

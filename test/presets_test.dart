@@ -359,7 +359,7 @@ void main() {
   });
 
   test(
-    'a record the app cannot write stops the restore before any write',
+    'an EQ record the app cannot write is left as it is; the rest restores',
     () async {
       final FakeBank pedal = FakeBank(bank());
       final PresetSession s = PresetSession(pedal);
@@ -374,18 +374,12 @@ void main() {
         presets: Uint8List.fromList(saved.presets)..[0] ^= 1,
         eq: eq,
       );
-      await expectLater(
-        restorePresetBank(s, odd),
-        throwsA(
-          isA<PresetIoException>().having(
-            (PresetIoException e) => e.message,
-            'message',
-            'Cannot restore: the EQ of P02 is not a record this app can '
-                'write. Nothing was written to the pedal.',
-          ),
-        ),
-      );
-      expect(pedal.writes, isEmpty);
+      final PresetDiff d = await restorePresetBank(s, odd);
+      expect(d.presets, <int>[0]);
+      expect(d.eq, isEmpty);
+      expect(d.skippedEq, <int>[1]);
+      expect(pedal.writes, <String>['preset 0', 'commit']);
+      expect(pedal.flash.sublist(0, presetSize), odd.preset(0));
       await s.close();
     },
   );
@@ -475,6 +469,41 @@ void main() {
     expect(pedal.writes, isEmpty);
     await s.close();
   });
+
+  test("a backup holding the pedal's own chain order restores", () async {
+    // The firmware stores orders a live Change Routing would not take (a
+    // factory preset does); restoring one must work.
+    final Uint8List now = bank()..setAll(2, <int>[0, 1, 2, 3, 4, 5]);
+    final Uint8List then = bank()..setAll(2, <int>[0, 2, 1, 5, 4, 3]);
+    final PresetBackup old = PresetBackup(
+      identity: 'x',
+      created: DateTime(2026),
+      presets: Uint8List.sublistView(then, 0, eqTableAddress),
+      eq: Uint8List.sublistView(then, eqTableAddress),
+    );
+    final FakeBank pedal = FakeBank(now);
+    final PresetSession s = PresetSession(pedal);
+    await restorePresetBank(s, old);
+    expect(pedal.flash.sublist(2, 8), <int>[0, 2, 1, 5, 4, 3]);
+    await s.close();
+  });
+
+  test('writing again completes a write whose store was lost', () async {
+    final _DropCommit pedal = _DropCommit(bank());
+    final PresetSession s = PresetSession(pedal);
+    final PresetBackup read = await readPresetBank(s, 'x');
+    final PresetBackup draft = read.copy()..setVolume(0, 10);
+    await expectLater(
+      restorePresetBank(s, draft, expected: read),
+      throwsA(isA<PresetIoException>()),
+    );
+    pedal.drop = false;
+    // The editor writes again against what it read: the mirror already
+    // holds the draft, which must not count as "the pedal changed".
+    await restorePresetBank(s, draft, expected: read);
+    expect(pedal.flash.sublist(0, 2), <int>[10, 0]);
+    await s.close();
+  }, timeout: const Timeout(Duration(seconds: 40)));
 }
 
 /// Ignores Commit while [drop]; can answer it late, and counts them.

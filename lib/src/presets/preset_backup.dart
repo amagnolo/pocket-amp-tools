@@ -407,9 +407,13 @@ class _Reader {
 
 /// Which slots differ between two backups.
 class PresetDiff {
-  const PresetDiff(this.presets, this.eq);
+  const PresetDiff(this.presets, this.eq, {this.skippedEq = const <int>[]});
   final List<int> presets;
   final List<int> eq;
+
+  /// EQ records left as they were on the pedal, because the wanted record
+  /// is not one Save EQ takes (set by [restorePresetBank]).
+  final List<int> skippedEq;
   bool get isEmpty => presets.isEmpty && eq.isEmpty;
 
   static PresetDiff between(PresetBackup want, PresetBackup have) => PresetDiff(
@@ -496,7 +500,20 @@ Future<PresetDiff> restorePresetBank(
   // preset saved on the pedal, or another unit plugged in), writing the
   // whole difference would undo that: stop and ask for a new read.
   if (expected != null) {
-    final PresetDiff moved = PresetDiff.between(expected, before);
+    // A slot that already holds what is being written did not move: that
+    // is the state an earlier write leaves when only its store was lost,
+    // and writing again must complete it.
+    final PresetDiff seen = PresetDiff.between(expected, before);
+    final PresetDiff moved = PresetDiff(
+      <int>[
+        for (final int i in seen.presets)
+          if (!_same(before.preset(i), backup.preset(i))) i,
+      ],
+      <int>[
+        for (final int i in seen.eq)
+          if (!_same(before.eqRecord(i), backup.eqRecord(i))) i,
+      ],
+    );
     if (!moved.isEmpty) {
       throw PresetIoException(
         'The pedal changed since its presets were read ($moved). Nothing was '
@@ -504,7 +521,17 @@ Future<PresetDiff> restorePresetBank(
       );
     }
   }
-  final PresetDiff diff = PresetDiff.between(backup, before);
+  final PresetDiff all = PresetDiff.between(backup, before);
+  // EQ records Save EQ does not take stay as they are on the pedal, so the
+  // rest of a backup still restores; the caller says which.
+  final List<int> skippedEq = <int>[
+    for (final int id in all.eq)
+      if (!_eqWritable(id, backup.eqRecord(id))) id,
+  ];
+  final PresetDiff diff = PresetDiff(all.presets, <int>[
+    for (final int id in all.eq)
+      if (!skippedEq.contains(id)) id,
+  ], skippedEq: skippedEq);
   // What this write changes must be something the firmware itself makes;
   // values the pedal already holds are written back as they are.
   final String? odd = _strangeChange(backup, before, diff);
@@ -545,7 +572,8 @@ Future<PresetDiff> restorePresetBank(
       onProgress?.call('Writing presets', ++done / writes.length);
     }
   } on PresetIoException catch (e) {
-    throw PresetIoException(done == 0 ? e.message : '${e.message} $notStored');
+    // Even the first save may have been taken without its answer arriving.
+    throw PresetIoException('${e.message} $notStored');
   }
   if (writes.isNotEmpty) {
     // Saves go to a RAM mirror of the bank, which is also what reads
@@ -556,7 +584,11 @@ Future<PresetDiff> restorePresetBank(
       backup.identity,
       onProgress: (double f) => onProgress?.call('Checking', f),
     );
-    final PresetDiff left = PresetDiff.between(backup, after);
+    final PresetDiff seen = PresetDiff.between(backup, after);
+    final PresetDiff left = PresetDiff(seen.presets, <int>[
+      for (final int id in seen.eq)
+        if (!skippedEq.contains(id)) id,
+    ]);
     if (!left.isEmpty) {
       throw PresetIoException('Restore did not take for $left. $notStored');
     }
@@ -575,16 +607,28 @@ Future<PresetDiff> restorePresetBank(
   return diff;
 }
 
+bool _eqWritable(int id, List<int> record) {
+  try {
+    saveEqPacket(id, record);
+    return true;
+  } on ArgumentError {
+    return false;
+  }
+}
+
 /// Why [want] cannot be written over [have] for the slots in [diff], or
 /// null. Only fields that change are checked: a model byte past the list or
 /// a chain that is not an order is refused when this write would put it
 /// there, and kept when the pedal already holds it.
 String? _strangeChange(PresetBackup want, PresetBackup have, PresetDiff diff) {
   for (final int id in diff.presets) {
+    // Any order of the six blocks: the firmware stores some that a live
+    // Change Routing would not take (a factory preset does), and a backup
+    // must bring them back. Edits made in the app keep FX and AMP first.
     final List<int> chain = want.chain(id);
-    if (!_same(chain, have.chain(id)) && !pedalTakesChain(chain)) {
-      return 'the chain of ${_slot(id)} must list each block once, with FX '
-          'and AMP first';
+    if (!_same(chain, have.chain(id)) &&
+        (chain.toSet().length != 6 || chain.any((int b) => b > 5))) {
+      return 'the chain of ${_slot(id)} must list each block once';
     }
     for (int b = 0; b < blockNames.length; b++) {
       final int model = want.model(id, b);

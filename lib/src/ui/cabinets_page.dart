@@ -181,9 +181,15 @@ Future<String?> confirmIrUpload(
           onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, sanitizeIrName(name.text)),
-          child: const Text('Replace'),
+        ValueListenableBuilder<TextEditingValue>(
+          valueListenable: name,
+          builder: (BuildContext context, TextEditingValue v, _) =>
+              FilledButton(
+                onPressed: sanitizeIrName(v.text).trim().isEmpty
+                    ? null
+                    : () => Navigator.pop(context, sanitizeIrName(v.text)),
+                child: const Text('Replace'),
+              ),
         ),
       ],
     ),

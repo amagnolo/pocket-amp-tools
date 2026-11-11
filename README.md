@@ -78,11 +78,11 @@ With **Live on pedal** (on by default), selecting a preset plays it on the pedal
 
 **Write to pedal** stores only the presets that changed, then reads everything back to confirm. If the pedal changed since its presets were read (a preset saved on the pedal, or another unit plugged in), nothing is written and the app asks for a new read. Every write is read back before it is stored, and is stored even when nothing differed, so a write whose storing step was lost is completed by the next one. Reading again, opening a file or closing the app with edits not on the pedal asks first. A preset can be copied as JSON and pasted back.
 
-**Ask the assistant** (the ✨ button on a preset) sends your request and the preset to an AI service you choose: any address that speaks the OpenAI chat-completions format, with your own model and key (kept on your computer, in plain text). The answer goes into the editor, is checked like a backup file, and is heard live; nothing is stored until you write.
+**Ask the assistant** (the ✨ button on a preset) sends your request and the preset to an AI service you choose: any address that speaks the OpenAI chat-completions format, with your own model and key (kept on your computer in plain text, readable only by you on Linux and macOS). The answer goes into the editor, is checked like a backup file, and is heard live; nothing is stored until you write.
 
 The **Cabinets** section lists the 20 CAB slots and puts your own IR in one: WAV, 44.1 kHz, mono, 24-bit, 2048 samples (the one format whose upload was measured). This writes to the pedal's flash, and the IR that was in the slot is gone for good: the app cannot read IRs back. That an uploaded IR survives turning the pedal off is not yet confirmed.
 
-The **Backups** section lists the backups the app keeps in `Documents/Pocket AMP Tools` (one is taken automatically before each firmware update), and opens or restores any of them. Backups made when the app was called Pocket AMP Upgrader stay in `Documents/Pocket AMP Upgrader` and are listed too.
+The **Backups** section lists the backups the app keeps in `Documents/Pocket AMP Tools` (one is taken automatically before each firmware update), and opens or restores any of them. Backups made when the app was called Pocket AMP Upgrader stay in `Documents/Pocket AMP Upgrader` and are listed too. On macOS the app runs in a sandbox, so that `Documents` folder is the app's own: `~/Library/Containers/io.github.vitoramaral10.pocketAmpUpgrader/Data/Documents`.
 
 A backup file lists every preset as plain fields, and the app restores from those fields, so a file edited by hand or by another tool goes back to the pedal:
 

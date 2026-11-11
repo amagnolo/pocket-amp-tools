@@ -89,6 +89,9 @@ class PresetService {
     void Function(double fraction)? onProgress,
   }) async {
     _checkPedal(pedal);
+    if (pedal.port.bluetooth) {
+      throw const PresetIoException('Uploading an IR needs the USB cable.');
+    }
     final List<(Uint8List, String)> packets = irUploadPackets(slot, name, pcm);
     final PresetSession s = PresetSession(await _open(pedal));
     try {
@@ -97,7 +100,20 @@ class PresetService {
         await s.write(packet, what, once: i == packets.length - 1);
         onProgress?.call((i + 1) / packets.length);
       }
-      return await s.readNames(amp: false);
+      final List<String> names = await s.readNames(amp: false);
+      // The pedal overwrites the first character of the first name.
+      final String want = sanitizeIrName(name);
+      final String got = names[slot];
+      final bool same = slot == 0
+          ? got.length == want.length && got.substring(1) == want.substring(1)
+          : got == want;
+      if (!same) {
+        throw PresetIoException(
+          'The pedal answered, but slot ${slot + 1} reads "$got", not '
+          '"$want". Send the IR again.',
+        );
+      }
+      return names;
     } finally {
       await s.close();
     }
@@ -108,7 +124,10 @@ class PresetService {
   /// devices are plugged or unplugged.
   Future<MidiConnection> _open(DetectedPedal pedal) async {
     final bool there = (await backend.listPorts()).any(
-      (MidiPortRef p) => p.id == pedal.port.id && p.name == pedal.port.name,
+      (MidiPortRef p) =>
+          p.id == pedal.port.id &&
+          p.name == pedal.port.name &&
+          p.usbId == pedal.port.usbId,
     );
     if (!there) {
       throw const PresetIoException(
@@ -167,24 +186,36 @@ class PresetService {
     final Directory old = Directory(
       '${dir.parent.path}${Platform.pathSeparator}Pocket AMP Upgrader',
     );
+    // One unreadable folder or a file that goes away while listing leaves
+    // the rest of the list.
+    bool usable(File f) {
+      try {
+        return f.path.endsWith('.json') &&
+            // Regular files only (no links, pipes or devices), and small: a
+            // backup is about 100 KB.
+            FileSystemEntity.typeSync(f.path, followLinks: false) ==
+                FileSystemEntityType.file &&
+            f.lengthSync() < 4 << 20;
+      } on FileSystemException {
+        return false;
+      }
+    }
+
     final List<File> files =
-        <Directory>[dir, if (old.existsSync()) old]
-            .expand((Directory d) => d.listSync())
-            .whereType<File>()
-            .where(
-              (File f) =>
-                  f.path.endsWith('.json') &&
-                  // Regular files only (no links, pipes or devices), and
-                  // small: a backup is about 100 KB.
-                  FileSystemEntity.typeSync(f.path, followLinks: false) ==
-                      FileSystemEntityType.file &&
-                  f.lengthSync() < 4 << 20,
-            )
-            .toList()
-          ..sort(
-            (File a, File b) =>
-                b.uri.pathSegments.last.compareTo(a.uri.pathSegments.last),
-          );
+        <File>[
+          for (final Directory d in <Directory>[dir, old])
+            if (d.existsSync())
+              ...() {
+                try {
+                  return d.listSync().whereType<File>().where(usable);
+                } on FileSystemException {
+                  return const <File>[];
+                }
+              }(),
+        ]..sort(
+          (File a, File b) =>
+              b.uri.pathSegments.last.compareTo(a.uri.pathSegments.last),
+        );
     return <(File, PresetBackup?, String?)>[
       for (final File f in files) await _read(f),
     ];
@@ -192,6 +223,9 @@ class PresetService {
 
   static Future<(File, PresetBackup?, String?)> _read(File f) async {
     try {
+      if (await f.length() > 4 << 20) {
+        throw const FormatException('too large for a backup');
+      }
       return (f, PresetBackup.fromJson(await f.readAsString()), null);
     } catch (e) {
       return (f, null, '$e');

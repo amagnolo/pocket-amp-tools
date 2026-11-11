@@ -86,7 +86,8 @@ void main() {
     );
     await tester.tap(find.text('Write 1 preset to pedal'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Restore'));
+    expect(find.text('Write presets to the pedal?'), findsOneWidget);
+    await tester.tap(find.text('Write'));
     await settle();
     await settle();
 
