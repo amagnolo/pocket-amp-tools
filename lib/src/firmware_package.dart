@@ -204,8 +204,8 @@ class FirmwarePackage {
 /// The Donner Pocket AMP has the same buttons, knobs and screen, and Donner's
 /// support sends M-VAVE's M-UPGRADE tool with its firmware. That firmware
 /// (`DONNER Pocket AMP_008`) is for the same AC791N chip and carries the same
-/// loader checksum as the Pocket AMP V1.05 package. Not yet confirmed by
-/// flashing a real unit.
+/// loader checksum as the Pocket AMP V1.05 package. An owner flashed a real
+/// unit from 0.08 to V1.05; its presets were kept.
 const Map<String, String> rebrands = <String, String>{
   'PIXIE1': 'Pocket AMP',
   'SK17': 'Pocket AMP',
