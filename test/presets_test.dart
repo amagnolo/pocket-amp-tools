@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocket_amp_tools/src/midi/midi_backend.dart';
 import 'package:pocket_amp_tools/src/ota_protocol.dart';
+import 'package:pocket_amp_tools/src/presets/block_models.dart';
 import 'package:pocket_amp_tools/src/presets/mefcs.dart';
 import 'package:pocket_amp_tools/src/presets/preset_backup.dart';
 import 'package:pocket_amp_tools/src/presets/preset_session.dart';
@@ -155,7 +156,7 @@ void main() {
     );
     final Map<String, Object?> file =
         jsonDecode(b.toJson()) as Map<String, Object?>;
-    expect(file['format'], 'pocket-amp-upgrader/presets@2');
+    expect(file['format'], 'pocket-amp-upgrader/presets@3');
     final List<Object?> presets = file['presets']! as List<Object?>;
     expect(presets, hasLength(presetCount));
     final Map<String, Object?> p = presets[1]! as Map<String, Object?>;
@@ -164,14 +165,14 @@ void main() {
     expect(blocks['AMP'], <String, Object>{
       'on': true,
       'model': '8DARKS_DS',
-      'knobs': <String, int>{
-        'Gain': 44,
-        'Level': 0,
-        'Bass': 0,
-        'Mid': 0,
-        'Treble': 0,
-        'knob6': 0,
-      },
+      'knobs': <Map<String, Object>>[
+        <String, Object>{'label': 'Gain', 'value': 44},
+        <String, Object>{'label': 'Level', 'value': 0},
+        <String, Object>{'label': 'Bass', 'value': 0},
+        <String, Object>{'label': 'Mid', 'value': 0},
+        <String, Object>{'label': 'Treble', 'value': 0},
+        <String, Object>{'label': 'knob6 (unused)', 'value': 0},
+      ],
     });
     expect((blocks['DLY']! as Map<String, Object?>)['model'], 9);
     expect(p['eq'], <String, Object>{
@@ -180,10 +181,13 @@ void main() {
       'bands': <int>[6, -6, 0, 0, 3],
     });
 
-    // Editing a field changes what is restored.
-    ((blocks['AMP']! as Map<String, Object?>)['knobs']!
-            as Map<String, Object?>)['Treble'] =
-        70;
+    // Editing a field changes what is restored. The label is not read: the
+    // position decides the knob.
+    final List<Object?> ampKnobs =
+        (blocks['AMP']! as Map<String, Object?>)['knobs']! as List<Object?>;
+    (ampKnobs[4]! as Map<String, Object?>)
+      ..['label'] = 'Treble (renamed)'
+      ..['value'] = 70;
     (blocks['AMP']! as Map<String, Object?>)['model'] = '3JC120_CL';
     final PresetBackup edited = PresetBackup.fromJson(jsonEncode(file));
     final Uint8List want = Uint8List.fromList(b.presets)
@@ -256,18 +260,80 @@ void main() {
     block(model, 'MOD')['model'] = 'Wah';
     refused(model, 'P03 MOD.model: "Wah" is not one of Chorus');
 
-    // Phaser has four knobs, Chorus three: the knob names must follow.
     final Map<String, Object?> knobs = file();
-    block(knobs, 'MOD')['model'] = 'Phaser';
-    refused(knobs, 'P03 MOD.knobs: model Phaser needs exactly');
+    (block(knobs, 'MOD')['knobs']! as List<Object?>).removeLast();
+    refused(knobs, 'P03 MOD.knobs: expected a list of 6 knob values');
+
+    final Map<String, Object?> noValue = file();
+    (block(noValue, 'MOD')['knobs']! as List<Object?>)[0] = <String, Object>{
+      'label': 'Speed',
+    };
+    refused(noValue, 'P03 MOD.knobs: each knob needs a "value"');
+
+    // Knobs by name, as version 2 files have them: the names must follow
+    // the model. Phaser has four knobs, Chorus three.
+    final Map<String, Object?> named = file();
+    block(named, 'MOD')
+      ..['model'] = 'Phaser'
+      ..['knobs'] = <String, int>{
+        'Speed': 0,
+        'Depth': 0,
+        'Mix': 0,
+        'knob4': 0,
+        'knob5': 0,
+        'knob6': 0,
+      };
+    refused(
+      named,
+      'P03 MOD.knobs: expected a list of 6 knob values, or '
+      'exactly Speed, ParamA, ParamB, Fb, knob5, knob6',
+    );
 
     final Map<String, Object?> range = file();
-    (block(range, 'AMP')['knobs']! as Map<String, Object?>)['Gain'] = 70000;
+    ((block(range, 'AMP')['knobs']! as List<Object?>)[0]!
+            as Map<String, Object?>)['value'] =
+        70000;
     refused(range, 'P03 AMP.Gain: expected a whole number from 0 to 65535');
 
     final Map<String, Object?> order = file();
     (order['presets']! as List<Object?>).removeAt(0);
     refused(order, 'must list all 80 presets');
+  });
+
+  test('a version 2 backup, with knobs by name, still restores', () {
+    final Uint8List a = bank();
+    final PresetBackup b = PresetBackup(
+      identity: 'x',
+      created: DateTime.utc(2026),
+      presets: Uint8List.sublistView(a, 0, eqTableAddress),
+      eq: Uint8List.sublistView(a, eqTableAddress),
+    );
+    final Map<String, Object?> file =
+        jsonDecode(b.toJson()) as Map<String, Object?>;
+    file['format'] = 'pocket-amp-upgrader/presets@2';
+    for (final Object? p in file['presets']! as List<Object?>) {
+      final Map<String, Object?> blocks =
+          (p! as Map<String, Object?>)['blocks']! as Map<String, Object?>;
+      for (final String name in blockNames) {
+        final Map<String, Object?> block =
+            blocks[name]! as Map<String, Object?>;
+        final List<Object?> list = block['knobs']! as List<Object?>;
+        final Object? m = block['model'];
+        final int index = m is int
+            ? m
+            : blockModels[name]!.indexWhere(
+                ((String, List<String>) e) => e.$1 == m,
+              );
+        expect(index, isNonNegative, reason: '$m');
+        block['knobs'] = <String, Object?>{
+          for (final (int k, String n) in knobNames(name, index).indexed)
+            n: (list[k]! as Map<String, Object?>)['value'],
+        };
+      }
+    }
+    final PresetBackup v2 = PresetBackup.fromJson(jsonEncode(file));
+    expect(v2.presets, b.presets);
+    expect(v2.eq, b.eq);
   });
 
   test('a version 1 backup is restored from its raw data', () {

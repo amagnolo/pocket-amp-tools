@@ -49,9 +49,11 @@ void main() {
             'model': 'Duck',
             'knobs': <String, int>{'Time': 30, 'Mix': 25},
           },
-          // Same model, one knob changed.
+          // Same model, one knob changed, by position as in the file.
           'AMP': <String, Object?>{
-            'knobs': <String, int>{'Gain': 20},
+            'knobs': <Object?>[
+              <String, Object?>{'label': 'Gain', 'value': 20},
+            ],
           },
         },
       },

@@ -27,12 +27,13 @@ class PresetBackup {
     }
   }
 
-  /// Reads a backup. Version 2 files are restored from their plain fields;
+  /// Reads a backup. Version 2 and 3 files are restored from their plain
+  /// fields (version 2 names knobs, version 3 lists them by position);
   /// version 1 files from their raw data.
   factory PresetBackup.fromJson(String text) {
     final Object? j = jsonDecode(text);
     if (j is! Map<String, Object?> ||
-        (j['format'] != format && j['format'] != formatV1)) {
+        !<Object?>[format, formatV2, formatV1].contains(j['format'])) {
       throw const FormatException('Not a Pocket AMP Tools preset backup.');
     }
     final String identity = j['pedal'] as String? ?? '?';
@@ -81,7 +82,8 @@ class PresetBackup {
     );
   }
 
-  static const String format = 'pocket-amp-upgrader/presets@2';
+  static const String format = 'pocket-amp-upgrader/presets@3';
+  static const String formatV2 = 'pocket-amp-upgrader/presets@2';
   static const String formatV1 = 'pocket-amp-upgrader/presets@1';
 
   final String identity;
@@ -177,13 +179,16 @@ class PresetBackup {
           blockNames[b]: <String, Object>{
             'on': _flag(p[8 + b]),
             'model': _modelName(blockNames[b], p[14 + b]) ?? p[14 + b],
-            'knobs': <String, int>{
-              for (final (int k, String name) in _knobNames(
+            'knobs': <Map<String, Object>>[
+              for (final (int k, String label) in knobLabels(
                 blockNames[b],
                 p[14 + b],
               ).indexed)
-                name: le16(20 + b * 12 + k * 2),
-            },
+                <String, Object>{
+                  'label': label,
+                  'value': le16(20 + b * 12 + k * 2),
+                },
+            ],
           },
       },
       'eq': _readableEq(eqRecord(id)),
@@ -197,11 +202,13 @@ class PresetBackup {
         'created': created.toUtc().toIso8601String(),
         'about':
             'The app restores from these fields: edit a value and restore the '
-            'file to change it on the pedal. Model and knob names follow '
-            'firmware V1.05; "knobN" is a stored value the model does not '
-            'use. Changing a model needs that model\'s knob names. Block '
-            'names follow the order on the screen and are not confirmed for '
-            'every position.',
+            'file to change it on the pedal. Model names follow firmware '
+            'V1.05. Each block lists its six stored knob values in order; '
+            'the "label" only says what the knob is and is not read back, so '
+            'the position decides which knob a value goes to. Labels marked '
+            'unused are values the model does not use. Block names follow '
+            'the order on the screen and are not confirmed for every '
+            'position.',
         'models': modelListId,
         'presets': readable,
       });
@@ -236,6 +243,13 @@ String? modelName(String block, int model) => _modelName(block, model);
 
 /// Names of the six knob values of [model] in [block].
 List<String> knobNames(String block, int model) => _knobNames(block, model);
+
+/// What the backup file shows next to each of the six knob values of
+/// [model] in [block]. Only informational: values are read back by position.
+List<String> knobLabels(String block, int model) => <String>[
+  for (final String n in _knobNames(block, model))
+    n.startsWith('knob') ? '$n (unused)' : n,
+];
 
 String? _modelName(String block, int model) {
   final List<(String, List<String>)> models = blockModels[block]!;
@@ -337,18 +351,40 @@ class _Reader {
       ], beyond: !strict);
       p[14 + b] = model;
       final List<String> want = _knobNames(name, model);
-      final Map<String, Object?> knobs = map(block['knobs'], '$name.knobs');
-      if (knobs.length != 6 || !want.every(knobs.containsKey)) {
-        _bad(
-          '$name.knobs',
-          'model ${block['model']} needs exactly ${want.join(', ')}',
-        );
-      }
+      final List<Object?> values = knobs(block['knobs'], name, want);
       for (int k = 0; k < 6; k++) {
-        le16(20 + b * 12 + k * 2, level(knobs[want[k]], '$name.${want[k]}'));
+        le16(20 + b * 12 + k * 2, level(values[k], '$name.${want[k]}'));
       }
     }
     return p;
+  }
+
+  /// The six knob values of a block, in order. A list is read by position:
+  /// each entry a number or an object with a "value" (its "label" is not
+  /// read). An object is read by the knob names in [want], as version 2
+  /// files and older pasted presets carry them.
+  List<Object?> knobs(Object? v, String block, List<String> want) {
+    if (v is List<Object?>) {
+      if (v.length != 6) {
+        _bad('$block.knobs', 'expected a list of 6 knob values');
+      }
+      return <Object?>[
+        for (final Object? e in v)
+          e is Map<String, Object?>
+              ? (e.containsKey('value')
+                    ? e['value']
+                    : _bad('$block.knobs', 'each knob needs a "value"'))
+              : e,
+      ];
+    }
+    final Map<String, Object?> named = map(v, '$block.knobs');
+    if (named.length != 6 || !want.every(named.containsKey)) {
+      _bad(
+        '$block.knobs',
+        'expected a list of 6 knob values, or exactly ${want.join(', ')}',
+      );
+    }
+    return <Object?>[for (final String k in want) named[k]];
   }
 
   Uint8List eq(Object? v, String where) {
