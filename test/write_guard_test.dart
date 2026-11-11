@@ -13,8 +13,7 @@ String hex(List<int> b) => b
     .join(' ');
 
 void main() {
-  // Packets measured on a Pocket AMP, as recorded in pocket-amp-editor
-  // (write_command.dart, read_command.dart).
+  // Packets measured on a Pocket AMP.
   test('live packets match the bytes measured on the pedal', () {
     expect(
       hex(loadPresetPacket(79)),

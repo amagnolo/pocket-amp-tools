@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //
-// GATT over BlueZ (Linux), through D-Bus. Ported from the pocket-amp-editor
-// project, where it talked to a Pocket AMP on 2026-10-04: reads and live
-// edits over the radio, each returned to its first state.
+// GATT over BlueZ (Linux), through D-Bus. Tried on a Pocket AMP on
+// 2026-10-04: reads and live edits over the radio, each returned to its
+// first state.
 //
 // The app never starts pairing: the pedal asks for authorization and drops
 // the link if nobody answers, so the user pairs it once with bluetoothctl.

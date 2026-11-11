@@ -156,8 +156,7 @@ bool isAck(List<int> packet) =>
 
 // --- live editing -----------------------------------------------------------
 //
-// The packets below come from the pocket-amp-editor project, where each one
-// was checked byte by byte on a Pocket AMP (probe-pocket-amp experiments).
+// Each packet below was checked byte by byte on a Pocket AMP.
 // They write only the live RAM of the active preset: switching presets or
 // turning the pedal off brings back what is stored. Every packet is also
 // checked by write_guard.dart before it is sent.
