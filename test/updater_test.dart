@@ -261,6 +261,39 @@ void main() {
       ]);
     });
 
+    test('finds the pedal again when its port has a generic name (Donner on Windows)', () async {
+      final FakePedal pedal = FakePedal(
+        image: pkg.image,
+        identity: 'DONNER Pocket AMP_008',
+        portName: 'USB-MIDI',
+      );
+      final PedalUpdater up = updater(pedal);
+      final DetectedPedal found = (await up.detect())!;
+      expect(found.identity, 'DONNER Pocket AMP_008');
+      // Detection asks every port; only the update must leave others alone.
+      pedal.sentToBystanders.clear();
+      expect(await up.update(pkg, found, (_) {}), 'Pocket AMP_105');
+      expect(pedal.arms, 2);
+      expect(pedal.flashReceived, pkg.image);
+      expect(pedal.sentToBystanders, isEmpty);
+    });
+
+    test(
+      'resumes a Donner pedal left in update mode under a generic port name',
+      () async {
+        final FakePedal pedal = FakePedal(
+          image: pkg.image,
+          identity: 'ota-DONNER Pocket AMP_008',
+          portName: 'USB-MIDI',
+        );
+        final PedalUpdater up = updater(pedal);
+        final DetectedPedal found = (await up.detect())!;
+        expect(found.inLoader, isTrue);
+        expect(await up.update(pkg, found, (_) {}), 'Pocket AMP_105');
+        expect(pedal.arms, 1);
+      },
+    );
+
     test(
       'a pedal left in update mode goes straight to the flash phase',
       () async {

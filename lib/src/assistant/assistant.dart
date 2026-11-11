@@ -16,7 +16,7 @@ import 'package:path_provider/path_provider.dart';
 import '../net/capped_http.dart';
 
 import '../presets/block_models.dart';
-import '../presets/preset_backup.dart' show knobNames;
+import '../presets/preset_backup.dart' show knobLabels, knobNames;
 
 class AssistantSettings {
   const AssistantSettings({
@@ -129,9 +129,9 @@ You design presets for the M-VAVE Pocket AMP, a guitar multi-effects pedal.
 A preset is a JSON object with this shape:
 {"volume": 0-100,
  "chain": the six blocks "FX","AMP","MOD","DLY","REV","CAB" in signal order, each once; FX and AMP must be the first two (in either order), the other four in any order,
- "blocks": {"FX": {"on": true|false, "model": "<model name>", "knobs": {"<knob>": 0-100, ...}}, ... one entry per block},
+ "blocks": {"FX": {"on": true|false, "model": "<model name>", "knobs": [{"label": "<knob>", "value": 0-100}, ... six entries]}, ... one entry per block},
  "eq": {"on": true|false, "position": "head"|"tail", "bands": [five whole numbers from -6 to 6]}}
-Each block's "knobs" must have exactly six keys: the model's knob names below, in order, then "knob<N>" for the remaining positions up to six (for example a model with four knobs adds "knob5" and "knob6"; keep their values as they are, or 0).
+Each block's "knobs" is a list of exactly six entries, in the order of the model's knobs below; the position decides which knob a value sets, the "label" is only a reminder. Positions past the model's knobs are unused (for example a model with four knobs has unused 5th and 6th entries); keep their values as they are, or 0.
 Models and their knobs per block (firmware V1.05):
 $models
 Change only what the request needs; keep everything else as in the current preset.
@@ -286,8 +286,9 @@ Map<String, Object?>? firstJsonObject(String? text) {
 }
 
 /// Lays [answer] over [current] (both in the backup file's preset shape), so
-/// a reply that leaves out unchanged fields or the unused "knobN" values
-/// still makes a whole preset. The result is checked like a file before use.
+/// a reply that leaves out unchanged fields or the unused knob values still
+/// makes a whole preset. Knobs may come as the file's list (by position) or
+/// as an object of knob names. The result is checked like a file before use.
 Map<String, Object?> mergeSuggestion(
   Map<String, Object?> current,
   Map<String, Object?> answer,
@@ -323,24 +324,58 @@ Map<String, Object?> mergeSuggestion(
           ? null
           : knobNames(name, index);
       final bool sameModel = model == now['model'];
-      final Map<Object?, Object?> askedKnobs = asked['knobs'] is Map
-          ? asked['knobs']! as Map<Object?, Object?>
-          : const <Object?, Object?>{};
-      final Map<Object?, Object?> nowKnobs = now['knobs'] is Map
-          ? now['knobs']! as Map<Object?, Object?>
-          : const <Object?, Object?>{};
+      final Object? askedKnobs = asked['knobs'];
+      final List<Object?>? askedValues = _knobValues(askedKnobs, names);
+      final List<Object?> nowValues = sameModel
+          ? _knobValues(now['knobs'], names) ?? List<Object?>.filled(6, null)
+          : List<Object?>.filled(6, null);
       blocks[name] = <String, Object?>{
         'on': asked['on'] ?? now['on'],
         'model': model,
-        'knobs': names == null
-            ? asked['knobs'] ?? now['knobs']
-            : <String, Object?>{
-                for (final String k in names)
-                  k: askedKnobs[k] ?? (sameModel ? nowKnobs[k] : null) ?? 0,
-              },
+        // An unknown model, or a list of the wrong length, goes through as
+        // given, for the check to refuse or keep it.
+        'knobs': names == null || askedValues == null
+            ? askedKnobs ?? now['knobs']
+            : <Map<String, Object?>>[
+                for (final (int k, String label) in knobLabels(
+                  name,
+                  index!,
+                ).indexed)
+                  <String, Object?>{
+                    'label': label,
+                    'value': askedValues[k] ?? nowValues[k] ?? 0,
+                  },
+              ],
       };
     }
     out['blocks'] = blocks;
   }
   return out;
+}
+
+/// The six knob values in [knobs], null where not given: a list by position
+/// (numbers or objects with a "value"), an object by the knob [names]. Null
+/// when [knobs] is a list of more than six, or neither shape fits.
+List<Object?>? _knobValues(Object? knobs, List<String>? names) {
+  if (knobs == null) {
+    return List<Object?>.filled(6, null);
+  }
+  if (knobs is List) {
+    if (knobs.length > 6) {
+      return null;
+    }
+    return <Object?>[
+      for (int k = 0; k < 6; k++)
+        if (k >= knobs.length)
+          null
+        else if (knobs[k] is Map)
+          (knobs[k] as Map<Object?, Object?>)['value']
+        else
+          knobs[k],
+    ];
+  }
+  if (knobs is Map && names != null) {
+    return <Object?>[for (final String n in names) knobs[n]];
+  }
+  return null;
 }

@@ -55,9 +55,7 @@ void main() {
     expect(_canUpdate(t), isTrue);
   });
 
-  testWidgets('the Donner consent does not claim units were updated', (
-    t,
-  ) async {
+  testWidgets('the Donner consent states what was tested', (t) async {
     await _show(
       t,
       const ConfirmUpdateDialog(
@@ -69,7 +67,7 @@ void main() {
       ),
     );
     expect(
-      find.textContaining('No Donner unit has been updated'),
+      find.textContaining('updated a Donner unit from 0.08'),
       findsOneWidget,
     );
     expect(find.textContaining('There is no'), findsNothing);

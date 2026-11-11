@@ -208,22 +208,22 @@ class FirmwarePackage {
 /// The Donner Pocket AMP has the same buttons, knobs and screen, and Donner's
 /// support sends M-VAVE's M-UPGRADE tool with its firmware. That firmware
 /// (`DONNER Pocket AMP_008`) is for the same AC791N chip and carries the same
-/// loader checksum as the Pocket AMP V1.05 package. Not yet confirmed by
-/// flashing a real unit.
+/// loader checksum as the Pocket AMP V1.05 package. An owner flashed a real
+/// unit from 0.08 to V1.05; its presets were kept.
+const Map<String, String> rebrands = <String, String>{
+  'PIXIE1': 'Pocket AMP',
+  'SK17': 'Pocket AMP',
+  'DONNER Pocket AMP': 'Pocket AMP',
+};
+
 /// What is known about converting each rebrand, shown before the user
 /// agrees to it.
 const Map<String, String> rebrandEvidence = <String, String>{
   'PIXIE1': 'An owner updated a PIXIE1 this way.',
   'SK17': 'An owner updated an SK17 this way.',
   'DONNER Pocket AMP':
-      "No Donner unit has been updated this way yet: Donner's own firmware "
-      'was converted on a Pocket AMP, which is the closest test so far.',
-};
-
-const Map<String, String> rebrands = <String, String>{
-  'PIXIE1': 'Pocket AMP',
-  'SK17': 'Pocket AMP',
-  'DONNER Pocket AMP': 'Pocket AMP',
+      'An owner updated a Donner unit from 0.08 this way; its presets were '
+      'kept.',
 };
 
 /// The name the pedal itself reports: `PIXIE1` for `PIXIE1_007`.

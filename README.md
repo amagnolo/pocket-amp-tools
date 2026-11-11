@@ -95,14 +95,21 @@ A backup file lists every preset as plain fields, and the app restores from thos
     "AMP": {
       "on": true,
       "model": "8DARKS_DS",
-      "knobs": { "Gain": 50, "Level": 60, "Bass": 45, "Mid": 55, "Treble": 50, "knob6": 0 }
+      "knobs": [
+        { "label": "Gain", "value": 50 },
+        { "label": "Level", "value": 60 },
+        { "label": "Bass", "value": 45 },
+        { "label": "Mid", "value": 55 },
+        { "label": "Treble", "value": 50 },
+        { "label": "knob6 (unused)", "value": 0 }
+      ]
     }
   },
   "eq": { "on": true, "position": "tail", "bands": [2, 0, -1, 0, 3] }
 }
 ```
 
-Every preset lists all six blocks; the example shows one. Knobs go from 0 to 100 and EQ bands from -6 to 6. `knobN` is a stored value the model does not use; it is kept so nothing is lost. Changing a model needs that model's knob names, and a file the pedal cannot take is refused before anything is written, naming the preset and field. Model and knob names follow firmware V1.05 (list collected in [#11](../../issues/11)); the block order and model numbers are not yet confirmed on a pedal for every position. Backups saved by earlier versions (`presets@1`) still restore. A file records which model list named it (`"models"`); a file named with another list is refused rather than restored as different bytes.
+Every preset lists all six blocks; the example shows one. Knobs go from 0 to 100 and EQ bands from -6 to 6. Each block lists its six stored knob values in order: the position decides which knob a value sets, and the `label` is only there to read, so it is not read back and a renamed label does not change what is restored. A label marked `(unused)` is a stored value the model does not use; it is kept so nothing is lost. A file the pedal cannot take is refused before anything is written, naming the preset and field. Model and knob names follow firmware V1.05 (list collected in [#11](../../issues/11)); the block order and model numbers are not yet confirmed on a pedal for every position. Backups saved by earlier versions (`presets@1`, and `presets@2` with knobs by name) still restore. A file records which model list named it (`"models"`); a file named with another list is refused rather than restored as different bytes.
 
 ### Bluetooth (Linux)
 

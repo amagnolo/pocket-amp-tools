@@ -343,9 +343,12 @@ class PedalUpdater {
     }
     onProgress(const UpdateProgress(UpdatePhase.preparing, null));
     final List<MidiPortRef> before = await backend.listPorts();
+    // The pedal's own port name is never one of the others, even when it
+    // does not look like a pedal: on Windows the Donner unit's port is just
+    // "USB-MIDI", and it comes back under that name after each restart.
     final Set<String> others = <String>{
       for (final MidiPortRef p in before)
-        if (!looksLikePedal(p)) p.name,
+        if (!looksLikePedal(p) && p.name != pedal.port.name) p.name,
     };
     // Another pedal plugged in at the same time must never be taken for
     // this one when it comes back.

@@ -78,7 +78,12 @@ class FakePedal implements MidiBackend {
     this.stallInLoader = false,
     this.rebootDelay = const Duration(milliseconds: 30),
     this.bank,
+    this.portName,
   });
+
+  /// The port's name in every mode, like the "USB-MIDI" a Donner unit shows
+  /// on Windows. Null: "Pocket AMP", or "USB Composite Device" in the loader.
+  final String? portName;
 
   /// Preset area (presets + EQ table) answered to M-EFCS reads; saves and
   /// commits change it. Null: the pedal ignores preset traffic.
@@ -143,7 +148,9 @@ class FakePedal implements MidiBackend {
 
   MidiPortRef get port => MidiPortRef(
     id: 'pedal',
-    name: identity.startsWith('ota-') ? 'USB Composite Device' : 'Pocket AMP',
+    name:
+        portName ??
+        (identity.startsWith('ota-') ? 'USB Composite Device' : 'Pocket AMP'),
   );
 
   @override
