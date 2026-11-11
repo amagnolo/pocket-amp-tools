@@ -15,6 +15,7 @@ class BackupsPage extends StatefulWidget {
     required this.canRestore,
     required this.onEdit,
     required this.onRestore,
+    required this.onRestoreRaw,
     required this.onSaveNew,
     this.task,
     this.fraction,
@@ -32,6 +33,7 @@ class BackupsPage extends StatefulWidget {
   final bool canRestore;
   final void Function(PresetBackup b, String name) onEdit;
   final void Function(PresetBackup b, String name) onRestore;
+  final void Function(File raw) onRestoreRaw;
   final Future<void> Function() onSaveNew;
 
   @override
@@ -131,12 +133,13 @@ class _BackupsPageState extends State<BackupsPage> {
                           in files.indexed) ...<Widget>[
                         if (i > 0) const Divider(height: 1),
                         _BackupTile(
-                          name: f.uri.pathSegments.last,
+                          file: f,
                           backup: b,
                           error: e,
                           canRestore: widget.canRestore,
                           onEdit: widget.onEdit,
                           onRestore: widget.onRestore,
+                          onRestoreRaw: widget.onRestoreRaw,
                         ),
                       ],
                     ],
@@ -151,23 +154,41 @@ class _BackupsPageState extends State<BackupsPage> {
 
 class _BackupTile extends StatelessWidget {
   const _BackupTile({
-    required this.name,
+    required this.file,
     required this.backup,
     required this.error,
     required this.canRestore,
     required this.onEdit,
     required this.onRestore,
+    required this.onRestoreRaw,
   });
-  final String name;
+  final File file;
   final PresetBackup? backup;
   final String? error;
   final bool canRestore;
   final void Function(PresetBackup b, String name) onEdit;
   final void Function(PresetBackup b, String name) onRestore;
+  final void Function(File raw) onRestoreRaw;
 
   @override
   Widget build(BuildContext context) {
+    final String name = file.uri.pathSegments.last;
     final PresetBackup? b = backup;
+    if (b == null && error == null) {
+      return ListTile(
+        leading: const Icon(Icons.inventory_2_outlined),
+        title: Text(name),
+        subtitle: const Text(
+          'Raw copy from older firmware: P01–P79 can be restored; P80 and '
+          'the EQ stay as they are on the pedal.',
+        ),
+        trailing: OutlinedButton.icon(
+          onPressed: canRestore ? () => onRestoreRaw(file) : null,
+          icon: const Icon(Icons.history),
+          label: const Text('Restore…'),
+        ),
+      );
+    }
     if (b == null) {
       return ListTile(
         leading: const Icon(Icons.error_outline),
