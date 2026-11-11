@@ -50,7 +50,7 @@ The same pedal is sold under other brands, and each reports its own name. The ap
 | --- | --- | --- |
 | Coolmusic PIXIE1 | `PIXIE1_007` | updated to V1.05 by an owner ([#2](../../issues/2)) |
 | New Bee SK17 | `SK17_006` | updated to V1.05 by an owner |
-| Donner Pocket AMP | `DONNER Pocket AMP_008` | Donner's own V08 firmware runs on a Pocket AMP (USB, MIDI, audio), and the app converted it to V1.05 ([#14](../../pull/14)); no Donner unit updated yet |
+| Donner Pocket AMP | `DONNER Pocket AMP_008` | updated from V08 to V1.05 by an owner on Windows, presets kept ([discussion #1](../../discussions/1)) |
 
 Have a clone that is not listed? Open the app, copy the log from **Details**, and send it with the [hardware test report](../../issues/new?template=hardware_report.yml) form.
 
@@ -133,7 +133,7 @@ Before anything is written, the app:
 - validates the whole `.fwsc` package (header, directory and CRC of every entry, chip `AC791N`);
 - only accepts packages made for the Pocket AMP itself (a clone vendor's own package is refused, even for a clone), and only the update loader (`ota.bin`) whose SHA-256 is known (`ef1f2db8…`, the one in the official V1.05 package);
 - knows the official package by its SHA-256 (V1.05: `9584e81d…`); any other package needs an extra confirmation, since only its update loader can be checked;
-- updates only the exact pedal that was confirmed, and with two pedals plugged in never takes the other one for the pedal coming back;
+- updates only the exact pedal that was confirmed, and refuses to start while another pedal is plugged in;
 - checks that the pedal on the USB port says it is a Pocket AMP (or a listed clone) before arming the transfer;
 - only asks the pedal for its identity when it opens; presets are read only when you start an update or save a backup, and nothing is written until you confirm.
 - checks every packet to the pedal against the exact shapes measured on a Pocket AMP before it is sent (reads of the preset area, live edits of the active preset, saving presets and EQ, the IR upload) and refuses anything else, so a bug cannot write somewhere new;
@@ -145,7 +145,7 @@ Before anything is written, the app:
 | Platform | Detection | Full update |
 | --- | --- | --- |
 | Linux | tested with a real pedal; preset backup and restore too | the app's traffic was traced side by side with the Python prototype that updated a real pedal from V1.03 to V1.05: same requests, same answers. A full update by the app itself waits for the next firmware, because the pedal refuses to reinstall the version it already runs |
-| Windows | works: a user's pedal was detected and its presets read ([#2](../../issues/2)) | works: a Coolmusic PIXIE1 was updated from V0.07 to Pocket AMP V1.05 ([#2](../../issues/2)); the first attempt stopped in update mode and the second finished |
+| Windows | works: a user's pedal was detected and its presets read ([#2](../../issues/2)) | works: a Coolmusic PIXIE1 was updated from V0.07 to Pocket AMP V1.05 ([#2](../../issues/2)), and a Donner Pocket AMP from V08 ([discussion #1](../../discussions/1)); in both, the first attempt stopped in update mode and the second finished |
 | macOS | works: a New Bee SK17 was detected ([#6](../../pull/6)) | works: the same SK17 was updated to Pocket AMP V1.05, with a fork that differs only in which pedals it accepts ([#6](../../pull/6)) |
 
 Reports are very welcome, including "it worked": use the [hardware test report](../../issues/new?template=hardware_report.yml) form.
