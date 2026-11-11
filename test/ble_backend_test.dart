@@ -22,6 +22,8 @@ class _Radio implements BleGattClient, BleGattSession {
   final FakePedal pedal;
   final List<BleDeviceInfo> devices;
   final List<List<int>> writes = <List<int>>[];
+  int failAfter = -1;
+  int disconnects = 0;
   final List<int> _in = <int>[];
   StreamController<List<int>> _notify = StreamController<List<int>>();
 
@@ -48,6 +50,9 @@ class _Radio implements BleGattClient, BleGattSession {
   int get writeMtu => 20;
   @override
   Future<void> write(List<int> chunk) async {
+    if (writes.length == failAfter) {
+      throw const BleGattException(BleGattFailure.disconnected);
+    }
     writes.add(chunk);
     _in.addAll(chunk);
     final int total = (_in[3] | (_in[4] << 8)) + 7;
@@ -64,6 +69,9 @@ class _Radio implements BleGattClient, BleGattSession {
       }
     }
   }
+
+  @override
+  Future<void> disconnect() async => disconnects++;
 
   @override
   Future<void> close() => _notify.close();
@@ -113,6 +121,41 @@ void main() {
     // Sent raw, without SysEx: the first piece starts with the packet.
     expect(radio.writes.first.sublist(0, 3), <int>[0x00, 0x59, 0x23]);
     expect(radio.writes.every((List<int> w) => w.length <= 20), isTrue);
+  });
+
+  test('a failed write drops the link', () async {
+    final _Radio radio = _Radio(
+      FakePedal(image: Uint8List(1024), bank: demoBank()),
+    )..failAfter = 0;
+    final MidiConnection c = await BleBackend(
+      client: radio,
+    ).open(const MidiPortRef(id: 'd', name: 'Pocket AMP_BLE', bluetooth: true));
+    await expectLater(
+      c.send(mefcsWrap(changeKnobPacket(1, 0, 50))),
+      throwsA(isA<MidiPortGone>()),
+    );
+    expect(radio.disconnects, 1);
+    await c.close();
+  });
+
+  test('a false header with a bad checksum is skipped', () async {
+    final _Radio radio = _Radio(
+      FakePedal(image: Uint8List(1024), bank: demoBank()),
+    );
+    final BleConnection c = BleConnection(
+      await radio.open(
+        deviceId: 'd',
+        serviceUuid: '',
+        writeCharacteristicUuid: '',
+        notifyCharacteristicUuid: '',
+      ),
+    );
+    final Uint8List good = loadPresetPacket(3);
+    final List<int> bad = List<int>.of(good)..last ^= 0xFF;
+    final Future<Uint8List> first = c.messages.first;
+    radio._notify.add(<int>[...bad, ...good]);
+    expect(mefcsUnwrap(await first), good);
+    await c.close();
   });
 
   test('firmware and IR traffic never go over the radio', () async {

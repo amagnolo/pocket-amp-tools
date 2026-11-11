@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //
-// Uploading a user IR to one of the 20 CAB slots. Ported from the
-// pocket-amp-editor project, where the official M-EFCS app was traced
-// sending eight IRs on firmware V1.05 (probe-pocket-amp/PROTOCOLO_IR.md):
+// Uploading a user IR to one of the 20 CAB slots, as the official M-EFCS
+// app was traced doing for eight IRs on firmware V1.05:
 //
 // 1. the image (20-byte header + PCM) goes to the pedal's IR buffer in
 //    chunks of 1015 bytes, and the buffer is applied to the sound;

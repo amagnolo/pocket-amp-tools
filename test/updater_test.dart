@@ -194,7 +194,7 @@ void main() {
       expect(pedal.arms, 0);
     });
 
-    test('another pedal plugged in is not taken for the updated one', () async {
+    test('nothing starts while another pedal is plugged in', () async {
       final FakePedal a = FakePedal(
         image: pkg.image,
         rebootDelay: const Duration(milliseconds: 600),
@@ -208,14 +208,19 @@ void main() {
         timings: fast,
         trustedLoaders: trusted,
       );
-      final String result = await up.update(
-        pkg,
-        DetectedPedal(a.port, 'Pocket AMP_103'),
-        (_) {},
+      // Port ids can move between pedals while one reboots: refuse.
+      await expectLater(
+        up.update(pkg, DetectedPedal(a.port, 'Pocket AMP_103'), (_) {}),
+        throwsA(
+          isA<UpdateException>().having(
+            (UpdateException e) => e.message,
+            'message',
+            contains('Another pedal'),
+          ),
+        ),
       );
-      expect(result, 'Pocket AMP_105');
-      expect(a.present, isTrue, reason: 'it waited for this pedal');
-      expect(a.flashReceived, pkg.image);
+      expect(a.arms, 0);
+      expect(b.arms, 0);
     });
 
     test('serves both phases and resumes on the rebooted port', () async {
@@ -325,7 +330,7 @@ void main() {
           isA<UpdateException>().having(
             (UpdateException e) => e.message,
             'message',
-            contains('declined'),
+            contains('already runs this version'),
           ),
         ),
       );
@@ -386,20 +391,55 @@ void main() {
     });
 
     test("Donner's own package is refused, even for a Donner pedal", () {
-      final FirmwarePackage donner = FirmwarePackage.parse(
-        buildFwsc(product: 'DONNER Pocket AMP_008', loader: loader),
-      );
-      expect(donner.isSupportedProduct, isFalse);
+      // Its real format: a 36-slot product name, which this parser does not
+      // read, so it never gets as far as the product check.
       expect(
-        updater(FakePedal(image: donner.image)).blockers(
-          donner,
-          const DetectedPedal(
-            MidiPortRef(id: 'pedal', name: 'USB-Midi'),
-            'DONNER Pocket AMP_008',
+        () => FirmwarePackage.parse(
+          buildFwsc(
+            product: 'DONNER Pocket AMP_008',
+            nameSlots: 36,
+            loader: loader,
           ),
         ),
-        isNotEmpty,
+        throwsA(isA<FirmwareFormatException>()),
       );
+    });
+
+    test(
+      'a package named like update mode, or with no version, is refused',
+      () {
+        for (final String name in <String>[
+          'ota-Pocket AMP_105',
+          'Pocket AMP',
+        ]) {
+          expect(
+            FirmwarePackage.parse(buildFwsc(product: name, loader: loader))
+                .isSupportedProduct,
+            isFalse,
+            reason: name,
+          );
+        }
+      },
+    );
+
+    test('the flash goes only to the pedal that ran the loader', () async {
+      final FakePedal a = FakePedal(
+        image: pkg.image,
+        rebootDelay: const Duration(milliseconds: 600),
+      );
+      // Appears only once the update started, already in update mode.
+      final FakePedal c = FakePedal(
+        image: pkg.image,
+        identity: 'ota-PIXIE1_007',
+      );
+      final String result = await PedalUpdater(
+        _Late(a, c),
+        timings: fast,
+        trustedLoaders: trusted,
+      ).update(pkg, DetectedPedal(a.port, 'Pocket AMP_103'), (_) {});
+      expect(result, 'Pocket AMP_105');
+      expect(c.flashReceived, isNull);
+      expect(a.flashReceived, pkg.image);
     });
 
     test('a Donner Pocket AMP is detected and takes the update', () async {
@@ -495,4 +535,21 @@ class _Two implements MidiBackend {
   @override
   Future<MidiConnection> open(MidiPortRef p) =>
       p.id == 'b' ? b.open(b.port) : a.open(p);
+}
+
+/// [c] shows up only after [a] was armed.
+class _Late implements MidiBackend {
+  _Late(this.a, this.c);
+  final FakePedal a;
+  final FakePedal c;
+
+  @override
+  Future<List<MidiPortRef>> listPorts() async => <MidiPortRef>[
+    ...await a.listPorts(),
+    if (a.arms > 0) MidiPortRef(id: 'c', name: c.port.name),
+  ];
+
+  @override
+  Future<MidiConnection> open(MidiPortRef p) =>
+      p.id == 'c' ? c.open(c.port) : a.open(p);
 }

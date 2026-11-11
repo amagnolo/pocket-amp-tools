@@ -76,7 +76,23 @@ class PresetWorkspace extends ChangeNotifier {
     }
   }
 
+  /// What [draft] was last loaded from or written to: edits are counted
+  /// against it, so they are guarded even with no pedal read.
+  PresetBackup? _base;
+
+  /// Presets (and their EQ) edited since the draft was loaded or written.
+  Set<int> get unsaved {
+    final PresetBackup? d = draft;
+    final PresetBackup? b = _base;
+    if (d == null || b == null) {
+      return const <int>{};
+    }
+    final PresetDiff diff = PresetDiff.between(d, b);
+    return <int>{...diff.presets, ...diff.eq};
+  }
+
   void load(PresetBackup b, String from, {bool fromPedal = false}) {
+    _base = b.copy();
     if (fromPedal) {
       onPedal = b;
     }
@@ -105,8 +121,15 @@ class PresetWorkspace extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The draft was saved to a file, so leaving now loses nothing.
+  void saved() {
+    _base = draft?.copy();
+    notifyListeners();
+  }
+
   void discard() {
     draft = onPedal!.copy();
+    _base = onPedal!.copy();
     showOnPedal();
     notifyListeners();
   }
@@ -114,6 +137,7 @@ class PresetWorkspace extends ChangeNotifier {
   /// [b] is now what the pedal holds. The pedal keeps its own identity,
   /// whatever file the presets came from.
   void written(PresetBackup b) {
+    _base = b.copy();
     onPedal = PresetBackup(
       identity: onPedal?.identity ?? b.identity,
       created: b.created,
@@ -127,6 +151,9 @@ class PresetWorkspace extends ChangeNotifier {
   /// it no longer says what it holds.
   void forgetPedal() {
     onPedal = null;
+    // Names belong to the pedal (or firmware) they were read from.
+    ampNames = null;
+    cabNames = null;
     notifyListeners();
   }
 }
@@ -246,6 +273,7 @@ class _Toolbar extends StatelessWidget {
             Tooltip(
               message:
                   'Play each change on the pedal as you make it. '
+                  'Volume and EQ are heard only after you write. '
                   'Nothing is stored until you write.',
               child: FilterChip(
                 selected: page.liveOn,
@@ -500,9 +528,9 @@ class _Detail extends StatelessWidget {
   }
 
   Future<void> _paste(BuildContext context) async {
-    final String? text = (await Clipboard.getData('text/plain'))?.text;
     String done;
     try {
+      final String? text = (await Clipboard.getData('text/plain'))?.text;
       final Object? j = jsonDecode(text ?? '');
       if (j is! Map<String, Object?>) {
         throw const FormatException('expected one preset as a JSON object');
@@ -514,6 +542,8 @@ class _Detail extends StatelessWidget {
           'write it.';
     } on FormatException catch (e) {
       done = 'Could not paste: ${e.message}';
+    } on PlatformException catch (e) {
+      done = 'Could not read the clipboard: ${e.message ?? e.code}';
     }
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(done)));
@@ -863,8 +893,8 @@ class _EqCard extends StatelessWidget {
   final void Function(void Function() change) edit;
 
   /// Whether the app can write this preset's EQ record back. Some stored
-  /// records (a position other than head or tail, bands outside -6..6) are not something Save EQ
-  /// takes; they are kept as they are unless the user resets them.
+  /// records are not in a form Save EQ takes; they are kept as they are
+  /// unless the user resets them.
   bool get _writable {
     try {
       saveEqPacket(id, draft.eqRecord(id));

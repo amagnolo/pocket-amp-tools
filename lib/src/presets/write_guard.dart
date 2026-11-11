@@ -4,7 +4,7 @@
 // builder in mefcs.dart already refuses bad input; this checks the finished
 // bytes again, independently, against the exact shapes measured on a Pocket
 // AMP. Anything else is refused, so a bug elsewhere cannot write somewhere
-// new. Ported from the allow list of the pocket-amp-editor project.
+// new.
 
 import 'block_models.dart';
 import 'ir_upload.dart';
@@ -182,10 +182,9 @@ String? _irWrite(List<int> p) {
   return 'IR chunk off the grid';
 }
 
-/// The ranges the firmware itself keeps in a preset body, as checked by the
-/// pocket-amp-editor before every save: volume and knobs 0..100, chain bytes
-/// below 6, on/off 0 or 1. A stored body outside them is a broken preset in
-/// flash. Model bytes are left out, as there: the model lists are not
+/// The ranges the firmware itself keeps in a preset body: volume and knobs
+/// 0..100, chain bytes below 6, on/off 0 or 1. A stored body outside them is
+/// a broken preset in flash. Model bytes are left out: the model lists are not
 /// confirmed, and the pedal's own presets must still be restorable.
 String? _presetBody(List<int> body) {
   int le16(int at) => body[at] | (body[at + 1] << 8);

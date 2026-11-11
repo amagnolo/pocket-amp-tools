@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //
 // The small part of Bluetooth LE GATT this app needs, behind an interface so
-// the transport can be tested without a radio. Ported from the
-// pocket-amp-editor project.
+// the transport can be tested without a radio.
 
 class BleDeviceInfo {
   const BleDeviceInfo({
@@ -61,6 +60,9 @@ abstract class BleGattSession {
   int get writeMtu;
 
   Future<void> write(List<int> chunk);
+
+  /// Drops the radio link, so the pedal forgets a packet cut off midway.
+  Future<void> disconnect();
   Future<void> close();
 }
 

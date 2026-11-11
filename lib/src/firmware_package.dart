@@ -9,10 +9,6 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
 
-/// SHA-256 of the `ota.bin` loader shipped in every known Pocket AMP package
-/// (and in the FM-1 V15 package). A package with any other loader is refused:
-/// the loader is what talks to the flash, and only this one has been seen
-/// working with this tool.
 /// SHA-256 of the whole official packages this app has seen, as M-VAVE
 /// publishes them. A package not listed here may still be genuine (a newer
 /// release); the app then asks for explicit consent instead of refusing.
@@ -21,10 +17,14 @@ const Map<String, String> officialPackages = <String, String>{
       'M-VAVE Pocket AMP V1.05',
 };
 
+/// SHA-256 of the `ota.bin` loader shipped in every known Pocket AMP package
+/// (and in the FM-1 V15 package). A package with any other loader is refused:
+/// the loader is what talks to the flash, and only this one has been seen
+/// working with this tool.
 const String knownLoaderSha256 =
     'ef1f2db89b011fa53e71df363f0122de0ea896618c53fb53e8da676322004541';
 
-/// Product prefixes this tool agrees to flash.
+/// Products (the name before the version) this tool agrees to flash.
 const List<String> supportedProducts = <String>['Pocket AMP'];
 
 class FirmwareFormatException implements Exception {
@@ -185,7 +185,11 @@ class FirmwarePackage {
   /// Only packages made for the product itself: a clone vendor's package
   /// (an SK17 or PIXIE1 one) is for other hardware, even when the clone
   /// takes the Pocket AMP firmware.
+  /// A package always names a version (`Pocket AMP_105`) and never the
+  /// update mode (`ota-…`), which only a pedal reports.
   bool get isSupportedProduct =>
+      !product.startsWith('ota-') &&
+      RegExp(r'_\d+$').hasMatch(product) &&
       supportedProducts.contains(reportedFamilyOf(product));
 }
 
@@ -210,6 +214,16 @@ const Map<String, String> rebrands = <String, String>{
   'PIXIE1': 'Pocket AMP',
   'SK17': 'Pocket AMP',
   'DONNER Pocket AMP': 'Pocket AMP',
+};
+
+/// What is known about converting each rebrand, shown before the user
+/// agrees to it.
+const Map<String, String> rebrandEvidence = <String, String>{
+  'PIXIE1': 'An owner updated a PIXIE1 this way.',
+  'SK17': 'An owner updated an SK17 this way.',
+  'DONNER Pocket AMP':
+      'An owner updated a Donner unit from 0.08 this way; its presets were '
+      'kept.',
 };
 
 /// The name the pedal itself reports: `PIXIE1` for `PIXIE1_007`.

@@ -137,6 +137,7 @@ class _BackupsPageState extends State<BackupsPage> {
                           backup: b,
                           error: e,
                           canRestore: widget.canRestore,
+                          canEdit: widget.task == null,
                           onEdit: widget.onEdit,
                           onRestore: widget.onRestore,
                           onRestoreRaw: widget.onRestoreRaw,
@@ -158,10 +159,12 @@ class _BackupTile extends StatelessWidget {
     required this.backup,
     required this.error,
     required this.canRestore,
+    required this.canEdit,
     required this.onEdit,
     required this.onRestore,
     required this.onRestoreRaw,
   });
+  final bool canEdit;
   final File file;
   final PresetBackup? backup;
   final String? error;
@@ -200,21 +203,39 @@ class _BackupTile extends StatelessWidget {
       leading: const Icon(Icons.inventory_2_outlined),
       title: Text(b.created.toLocal().toString().substring(0, 16)),
       subtitle: Text('${b.identity} · $name'),
-      trailing: Wrap(
-        spacing: 8,
-        children: <Widget>[
-          TextButton.icon(
-            onPressed: () => onEdit(b, name),
-            icon: const Icon(Icons.edit_outlined),
-            label: const Text('Open in editor'),
-          ),
-          OutlinedButton.icon(
-            onPressed: canRestore ? () => onRestore(b, name) : null,
-            icon: const Icon(Icons.history),
-            label: const Text('Restore…'),
-          ),
-        ],
-      ),
+      trailing: MediaQuery.sizeOf(context).width < 640
+          ? PopupMenuButton<bool>(
+              tooltip: 'Actions',
+              onSelected: (bool restore) =>
+                  restore ? onRestore(b, name) : onEdit(b, name),
+              itemBuilder: (BuildContext context) => <PopupMenuEntry<bool>>[
+                PopupMenuItem<bool>(
+                  value: false,
+                  enabled: canEdit,
+                  child: const Text('Open in editor'),
+                ),
+                PopupMenuItem<bool>(
+                  value: true,
+                  enabled: canRestore,
+                  child: const Text('Restore…'),
+                ),
+              ],
+            )
+          : Wrap(
+              spacing: 8,
+              children: <Widget>[
+                TextButton.icon(
+                  onPressed: canEdit ? () => onEdit(b, name) : null,
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('Open in editor'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: canRestore ? () => onRestore(b, name) : null,
+                  icon: const Icon(Icons.history),
+                  label: const Text('Restore…'),
+                ),
+              ],
+            ),
     );
   }
 }

@@ -50,7 +50,11 @@ class LiveLink {
 
   /// Plays preset [id] and makes it sound like [body], applying live what
   /// differs from what is stored on the pedal.
+  /// The preset last loaded on the pedal by [show], if any.
+  int? _shown;
+
   Future<void> show(int id, Uint8List body) => _run(() async {
+    _shown = id;
     await _session.write(loadPresetPacket(id), 'selecting the preset');
     final Uint8List live = await _session.readLive();
     await _sync(live, body);
@@ -133,6 +137,16 @@ class LiveLink {
   Future<void> close() async {
     _closed = true;
     await _tail;
+    // Load the preset again so the edits played live, which are not stored,
+    // leave the pedal before anything else (a store) talks to it.
+    final int? id = _shown;
+    if (id != null) {
+      try {
+        await _session.write(loadPresetPacket(id), 'reloading the preset');
+      } catch (_) {
+        // The pedal may be gone; closing goes on.
+      }
+    }
     await _session.close();
   }
 }

@@ -157,6 +157,13 @@ class PresetSession {
         wait: once ? const Duration(seconds: 10) : timeout,
       );
       if (r != null) {
+        if (i > 0) {
+          // An answer to an earlier attempt may still come; acknowledgements
+          // carry nothing to tell them apart, so let it arrive and drop it
+          // before the next request could take it for its own.
+          await Future<void>.delayed(timeout);
+          _queue.clear();
+        }
         return;
       }
     }
