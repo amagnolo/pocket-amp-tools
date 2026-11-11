@@ -102,8 +102,6 @@ A backup file lists every preset as plain fields, and the app restores from thos
 }
 ```
 
-Some presets keep an EQ in a form the pedal stores but Save EQ does not take (position `0x80`, seen on factory presets); the editor shows it as is and offers to reset it to off and flat instead of editing it.
-
 Every preset lists all six blocks; the example shows one. Knobs go from 0 to 100 and EQ bands from -6 to 6. `knobN` is a stored value the model does not use; it is kept so nothing is lost. Changing a model needs that model's knob names, and a file the pedal cannot take is refused before anything is written, naming the preset and field. Model and knob names follow firmware V1.05 (list collected in [#11](../../issues/11)); the block order and model numbers are not yet confirmed on a pedal for every position. Backups saved by earlier versions (`presets@1`) still restore. A file records which model list named it (`"models"`); a file named with another list is refused rather than restored as different bytes.
 
 ### Bluetooth (Linux)

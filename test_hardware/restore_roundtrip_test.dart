@@ -30,7 +30,7 @@ void main() {
     final int at = eqHeaderLength + p80 * eqRecordLength;
     final List<int> rec = eqCopy.sublist(at, at + eqRecordLength);
     // Change the EQ only if the original can be written back: some stored
-    // records (position 0x80) are outside what Save EQ takes.
+    // records are outside what Save EQ takes.
     bool eqWritable = true;
     try {
       saveEqPacket(p80, rec);

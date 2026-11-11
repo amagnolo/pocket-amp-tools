@@ -248,17 +248,9 @@ void main() {
     tester.view.physicalSize = const Size(1400, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    // P01's EQ as stored on a real V1.05 pedal.
+    // P01's EQ is a record Save EQ does not take (position 2, bands 9 and -16).
     final Uint8List bank = demoBank()
-      ..setAll(eqTableAddress + eqHeaderLength, <int>[
-        1,
-        0x80,
-        3,
-        0x78,
-        1,
-        0xBC,
-        0x1E,
-      ]);
+      ..setAll(eqTableAddress + eqHeaderLength, <int>[1, 2, 9, 0, 0, 0xF0, 0]);
     final FakePedal pedal = FakePedal(image: Uint8List(1024), bank: bank);
     await tester.pumpWidget(MaterialApp(home: HomePage(backend: pedal)));
     Future<void> settle() async {
