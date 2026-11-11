@@ -30,7 +30,7 @@ Get the build for your system from the newest entry on the [releases page](../..
 | macOS 11+ | `pocket-amp-tools-macos.zip` | Unzip, then right-click *Pocket AMP Tools* → *Open* (the app is not signed). |
 | Linux (x64) | `Pocket_AMP_Tools-x86_64.AppImage` | `chmod +x` it and run it. Or use `pocket-amp-tools-linux-x64.tar.gz`. Needs GTK 3 and ALSA (`libasound2`). |
 
-Each release lists the SHA-256 of every file in `SHA256SUMS.txt`. Releases after v0.2.0-beta.3 also let you check that a file was built by this repository's CI: `gh attestation verify <file> --repo vitoramaral10/pocket-amp-tools`.
+Each release lists the SHA-256 of every file in `SHA256SUMS.txt`. Releases after v0.2.0-beta.4 also let you check that a file was built by this repository's CI: `gh attestation verify <file> --repo vitoramaral10/pocket-amp-tools`.
 
 ## How to update
 
