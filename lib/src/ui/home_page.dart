@@ -95,6 +95,14 @@ class _HomePageState extends State<HomePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _detect());
   }
 
+  // Async work outlives the page when the window closes mid-task.
+  @override
+  void setState(VoidCallback fn) {
+    if (mounted) {
+      super.setState(fn);
+    }
+  }
+
   @override
   void dispose() {
     _stopLive();
@@ -106,7 +114,7 @@ class _HomePageState extends State<HomePage> {
   /// Closing the window mid-transfer is the easiest way to brick a pedal.
   Future<AppExitResponse> _onExitRequested() async {
     if (_stage != _Stage.updating && _presetTask == null) {
-      if (_workspace.changed.isEmpty) {
+      if (_workspace.unsaved.isEmpty) {
         return AppExitResponse.exit;
       }
       return await _confirmDiscard('Close the app?')
@@ -117,10 +125,17 @@ class _HomePageState extends State<HomePage> {
       context: context,
       builder: (BuildContext context) => AlertDialog(
         icon: const Icon(Icons.warning_amber_rounded),
-        title: const Text('The pedal is being written'),
-        content: const Text(
-          'Closing now can leave the pedal unusable. Wait until the app says '
-          'it is done.',
+        title: Text(
+          _stage == _Stage.updating
+              ? 'The pedal is being updated'
+              : 'The app is busy with the pedal ($_presetTask)',
+        ),
+        content: Text(
+          _stage == _Stage.updating
+              ? 'Closing now can leave the pedal unusable. Wait until the app '
+                    'says it is done.'
+              : 'Closing now can leave a write half done. Wait until the app '
+                    'says it is done.',
         ),
         actions: <Widget>[
           TextButton(
@@ -139,7 +154,7 @@ class _HomePageState extends State<HomePage> {
 
   /// True when there are no unsaved edits, or the user lets them go.
   Future<bool> _confirmDiscard(String title) async {
-    final int n = _workspace.changed.length;
+    final int n = _workspace.unsaved.length;
     if (n == 0) {
       return true;
     }
@@ -148,8 +163,8 @@ class _HomePageState extends State<HomePage> {
       builder: (BuildContext context) => AlertDialog(
         title: Text(title),
         content: Text(
-          '$n edited preset${n == 1 ? ' is' : 's are'} not on the pedal. '
-          'Write them, or save them to a file, to keep them.',
+          '$n edited preset${n == 1 ? ' is' : 's are'} not written or saved. '
+          'Write them to the pedal, or save them to a file, to keep them.',
         ),
         actions: <Widget>[
           TextButton(
@@ -426,6 +441,12 @@ class _HomePageState extends State<HomePage> {
         p,
         onError: (Object e) {
           _addLog('Live edit failed: $e');
+          if (e is MidiPortGone) {
+            // Unplugged while live: drop the link and the pedal, so nothing
+            // keeps writing to a port that is gone.
+            unawaited(_lostPedal());
+            return;
+          }
           if (mounted) {
             setState(() {
               _presetMessage = 'Live edit failed: $e';
@@ -448,6 +469,19 @@ class _HomePageState extends State<HomePage> {
     }
     if (mounted) {
       setState(() {});
+    }
+  }
+
+  Future<void> _lostPedal() async {
+    await _stopLive();
+    if (mounted) {
+      setState(() {
+        _pedal = null;
+        _presetMessage =
+            'The pedal was disconnected. Edits stay here; connect it again '
+            'and detect it to go on.';
+        _presetError = true;
+      });
     }
   }
 
@@ -558,6 +592,7 @@ class _HomePageState extends State<HomePage> {
       return 'Not saved (no file chosen).';
     }
     await File(where.path).writeAsString(b.toJson());
+    _workspace.saved();
     return 'Saved to ${where.path}.';
   });
 
@@ -592,8 +627,17 @@ class _HomePageState extends State<HomePage> {
     }
     final Uint8List pcm;
     try {
+      if (await file.length() > 1 << 20) {
+        throw const InvalidIrFile('the file is too large for a 2048-sample IR');
+      }
       pcm = parseIrWav(await file.readAsBytes());
-    } on InvalidIrFile catch (e) {
+    } on Object catch (e) {
+      if (e is! InvalidIrFile && e is! FileSystemException) {
+        rethrow;
+      }
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _presetMessage = '${file.name}: $e';
         _presetError = true;
@@ -653,7 +697,9 @@ class _HomePageState extends State<HomePage> {
     final bool? go = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: const Text('Restore presets?'),
+        title: Text(
+          expected == null ? 'Restore presets?' : 'Write presets to the pedal?',
+        ),
         content: Text(
           'Presets and EQ that differ from $from '
           '(${b.identity}, ${b.created.toLocal().toString().substring(0, 16)}) '
@@ -667,7 +713,7 @@ class _HomePageState extends State<HomePage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Restore'),
+            child: Text(expected == null ? 'Restore' : 'Write'),
           ),
         ],
       ),
@@ -819,7 +865,7 @@ class _HomePageState extends State<HomePage> {
         ? p.family
         : '${p.rebrand} (${p.family})';
     final String subtitle = p == null
-        ? 'Connect it by USB and close other MIDI apps'
+        ? 'Connect it by USB (or pair it by Bluetooth) and close other MIDI apps'
         : p.port.bluetooth
         ? 'Bluetooth · presets only'
         : p.inLoader
@@ -853,7 +899,12 @@ class _HomePageState extends State<HomePage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Text(title, style: theme.textTheme.titleMedium),
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium,
+                ),
                 Text(
                   subtitle,
                   overflow: TextOverflow.ellipsis,
@@ -1194,8 +1245,8 @@ class _WarningCard extends StatelessWidget {
               SizedBox(height: 8),
               Text(
                 '• A firmware update can overwrite some presets and their EQ. '
-                'The app backs up all 80 first and offers to restore them when '
-                'it is done.\n'
+                'When it can read them, the app backs up all 80 first and offers '
+                'to restore them when it is done.\n'
                 '• Charge the battery and use a reliable USB data cable.\n'
                 '• Do not unplug, turn off or let the computer sleep until the '
                 'app says it is done (about 2 minutes).\n'

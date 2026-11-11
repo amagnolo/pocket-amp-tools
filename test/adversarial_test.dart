@@ -154,6 +154,19 @@ void main() {
     expect(w.changed, isEmpty);
   });
 
+  test('edits saved to a file or written are no longer unsaved', () {
+    final PresetWorkspace w = PresetWorkspace()
+      ..load(_of(demoBank()), 'x', fromPedal: true);
+    expect(w.unsaved, isEmpty);
+    w.draft!.presets[0] ^= 1;
+    expect(w.unsaved, <int>{0});
+    w.saved();
+    expect(w.unsaved, isEmpty);
+    w.draft!.presets[presetSize] ^= 1;
+    w.written(w.draft!);
+    expect(w.unsaved, isEmpty);
+  });
+
   test('an error handler that throws does not stop the queue', () async {
     final FakePedal pedal = FakePedal(image: Uint8List(1024), bank: demoBank());
     final LiveLink link = LiveLink(
