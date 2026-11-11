@@ -50,6 +50,7 @@ The same pedal is sold under other brands, and each reports its own name. The ap
 | --- | --- | --- |
 | Coolmusic PIXIE1 | `PIXIE1_007` | updated to V1.05 by an owner ([#2](../../issues/2)) |
 | New Bee SK17 | `SK17_006` | updated to V1.05 by an owner |
+| Donner Pocket AMP | `DONNER Pocket AMP_008` | Donner's own V08 firmware runs on a Pocket AMP (USB, MIDI, audio), and the app converted it to V1.05 ([#14](../../pull/14)); no Donner unit updated yet |
 
 Have a clone that is not listed? Open the app, copy the log from **Details**, and send it with the [hardware test report](../../issues/new?template=hardware_report.yml) form.
 
@@ -194,6 +195,7 @@ Every clone on the list is there because an owner risked their own pedal and rep
 
 - [ShinaTak1](https://github.com/ShinaTak1): first to update a Coolmusic PIXIE1 to V1.05 ([#2](../../issues/2)).
 - [jtcornett](https://github.com/jtcornett): added the New Bee SK17 ([#6](../../pull/6)).
+- [fernandoarafat](https://github.com/fernandoarafat): sent the detection log, photos and firmware of a Donner Pocket AMP, which made the Donner support possible (discussion [#1](../../discussions/1)).
 
 Tested it on your pedal? Send the [hardware test report](../../issues/new?template=hardware_report.yml) and your name goes here.
 
