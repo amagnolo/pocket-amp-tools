@@ -13,6 +13,14 @@ import 'package:crypto/crypto.dart' as crypto;
 /// (and in the FM-1 V15 package). A package with any other loader is refused:
 /// the loader is what talks to the flash, and only this one has been seen
 /// working with this tool.
+/// SHA-256 of the whole official packages this app has seen, as M-VAVE
+/// publishes them. A package not listed here may still be genuine (a newer
+/// release); the app then asks for explicit consent instead of refusing.
+const Map<String, String> officialPackages = <String, String>{
+  '9584e81da98215e8e70ddffc28311423ceaa1a5a8a12a478dc68f4679e10902b':
+      'M-VAVE Pocket AMP V1.05',
+};
+
 const String knownLoaderSha256 =
     'ef1f2db89b011fa53e71df363f0122de0ea896618c53fb53e8da676322004541';
 
@@ -107,6 +115,11 @@ class FirmwarePackage {
         throw FirmwareFormatException('Entry outside the package: $name');
       }
       final Uint8List data = Uint8List.sublistView(img, offset, offset + size);
+      // The flash image and the loader are plain in official packages, so
+      // their CRC is always checked.
+      if ((type == 0 || type == 100) && encrypted != 0) {
+        throw FirmwareFormatException('Unexpected flags on entry $name');
+      }
       if (encrypted == 0 && crc16(data) != _le(e, 4, 2)) {
         throw FirmwareFormatException('CRC mismatch: $name');
       }
@@ -165,7 +178,15 @@ class FirmwarePackage {
 
   bool get hasKnownLoader => loaderSha256 == knownLoaderSha256;
 
-  bool get isSupportedProduct => supportedProducts.contains(productFamily);
+  /// The name of this exact official package, or null when it is not one
+  /// this app knows.
+  String? get officialName => officialPackages[sha256];
+
+  /// Only packages made for the product itself: a clone vendor's package
+  /// (an SK17 or PIXIE1 one) is for other hardware, even when the clone
+  /// takes the Pocket AMP firmware.
+  bool get isSupportedProduct =>
+      supportedProducts.contains(reportedFamilyOf(product));
 }
 
 /// Other brands' names for the same hardware, mapped to the product whose

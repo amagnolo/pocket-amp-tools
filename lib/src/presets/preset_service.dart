@@ -8,6 +8,8 @@ import 'package:path_provider/path_provider.dart';
 import '../firmware_package.dart';
 import '../midi/midi_backend.dart';
 import '../pedal_updater.dart';
+import 'ir_upload.dart';
+import 'live_link.dart';
 import 'preset_backup.dart';
 import 'preset_session.dart';
 
@@ -22,7 +24,7 @@ class PresetService {
     void Function(double fraction)? onProgress,
   }) async {
     _checkPedal(pedal);
-    final PresetSession s = PresetSession(await backend.open(pedal.port));
+    final PresetSession s = PresetSession(await _open(pedal));
     try {
       return await readPresetBank(s, pedal.identity, onProgress: onProgress);
     } finally {
@@ -34,6 +36,7 @@ class PresetService {
     DetectedPedal pedal,
     PresetBackup backup, {
     void Function(String step, double fraction)? onProgress,
+    PresetBackup? expected,
   }) async {
     _checkPedal(pedal);
     if (familyOf(backup.identity) != pedal.family) {
@@ -42,12 +45,77 @@ class PresetService {
         'not a "${pedal.family}".',
       );
     }
-    final PresetSession s = PresetSession(await backend.open(pedal.port));
+    final PresetSession s = PresetSession(await _open(pedal));
     try {
-      return await restorePresetBank(s, backup, onProgress: onProgress);
+      return await restorePresetBank(
+        s,
+        backup,
+        onProgress: onProgress,
+        expected: expected,
+      );
     } finally {
       await s.close();
     }
+  }
+
+  /// Opens the pedal for live editing. Close the link before any other
+  /// operation: only one can use the port at a time.
+  Future<LiveLink> openLive(
+    DetectedPedal pedal, {
+    required void Function(Object error) onError,
+  }) async {
+    _checkPedal(pedal);
+    return LiveLink(PresetSession(await _open(pedal)), onError: onError);
+  }
+
+  /// AMP and CAB model names stored on the pedal, as stored.
+  Future<(List<String>, List<String>)> readNames(DetectedPedal pedal) async {
+    _checkPedal(pedal);
+    final PresetSession s = PresetSession(await _open(pedal));
+    try {
+      return (await s.readNames(amp: true), await s.readNames(amp: false));
+    } finally {
+      await s.close();
+    }
+  }
+
+  /// Puts [pcm] in CAB slot [slot] (0..19) named [name] and returns the CAB
+  /// names read back afterwards.
+  Future<List<String>> uploadIr(
+    DetectedPedal pedal,
+    int slot,
+    String name,
+    Uint8List pcm, {
+    void Function(double fraction)? onProgress,
+  }) async {
+    _checkPedal(pedal);
+    final List<(Uint8List, String)> packets = irUploadPackets(slot, name, pcm);
+    final PresetSession s = PresetSession(await _open(pedal));
+    try {
+      for (final (int i, (Uint8List packet, String what)) in packets.indexed) {
+        // The last packet copies the buffer to flash.
+        await s.write(packet, what, once: i == packets.length - 1);
+        onProgress?.call((i + 1) / packets.length);
+      }
+      return await s.readNames(amp: false);
+    } finally {
+      await s.close();
+    }
+  }
+
+  /// Opens the pedal's port after checking it is still the port that was
+  /// detected: on some systems a port's id goes to another device when
+  /// devices are plugged or unplugged.
+  Future<MidiConnection> _open(DetectedPedal pedal) async {
+    final bool there = (await backend.listPorts()).any(
+      (MidiPortRef p) => p.id == pedal.port.id && p.name == pedal.port.name,
+    );
+    if (!there) {
+      throw const PresetIoException(
+        'The pedal is no longer where it was detected. Click Detect again.',
+      );
+    }
+    return backend.open(pedal.port);
   }
 
   static void _checkPedal(DetectedPedal pedal) {
@@ -59,11 +127,19 @@ class PresetService {
     }
   }
 
-  /// Keeps a copy in `Documents/Pocket AMP Upgrader`, so a backup taken right
+  /// Keeps a copy in `Documents/Pocket AMP Tools`, so a backup taken right
   /// before an update survives the app being closed.
   static Future<File> keepCopy(PresetBackup backup) async {
+    final String text = backup.toJson();
+    // A backup that cannot be opened again is no backup.
+    final PresetBackup back = PresetBackup.fromJson(text);
+    if (PresetDiff.between(back, backup).isEmpty == false) {
+      throw const PresetIoException(
+        'The backup file would not restore the same presets.',
+      );
+    }
     final File f = await _inKeepDir(backup.suggestedFileName);
-    await f.writeAsString(backup.toJson());
+    await f.writeAsString(text);
     return f;
   }
 
@@ -75,17 +151,57 @@ class PresetService {
         .split('.')
         .first
         .replaceAll(':', '');
-    final File f = await _inKeepDir(
-      'raw-${identity.replaceAll(' ', '_')}-$stamp.bin',
-    );
+    // The identity comes from the device: keep only safe characters.
+    final String name = identity.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final File f = await _inKeepDir('raw-$name-$stamp.bin');
     await f.writeAsBytes(area);
     return f;
+  }
+
+  /// Backups kept in `Documents/Pocket AMP Tools`, newest first. Files
+  /// that do not read as a backup are listed with their error.
+  static Future<List<(File, PresetBackup?, String?)>> kept() async {
+    final Directory dir = (await _inKeepDir('x')).parent;
+    // Backups made while the app was called Pocket AMP Upgrader stay where
+    // they were and are listed too.
+    final Directory old = Directory(
+      '${dir.parent.path}${Platform.pathSeparator}Pocket AMP Upgrader',
+    );
+    final List<File> files =
+        <Directory>[dir, if (old.existsSync()) old]
+            .expand((Directory d) => d.listSync())
+            .whereType<File>()
+            .where(
+              (File f) =>
+                  f.path.endsWith('.json') &&
+                  // Regular files only (no links, pipes or devices), and
+                  // small: a backup is about 100 KB.
+                  FileSystemEntity.typeSync(f.path, followLinks: false) ==
+                      FileSystemEntityType.file &&
+                  f.lengthSync() < 4 << 20,
+            )
+            .toList()
+          ..sort(
+            (File a, File b) =>
+                b.uri.pathSegments.last.compareTo(a.uri.pathSegments.last),
+          );
+    return <(File, PresetBackup?, String?)>[
+      for (final File f in files) await _read(f),
+    ];
+  }
+
+  static Future<(File, PresetBackup?, String?)> _read(File f) async {
+    try {
+      return (f, PresetBackup.fromJson(await f.readAsString()), null);
+    } catch (e) {
+      return (f, null, '$e');
+    }
   }
 
   static Future<File> _inKeepDir(String name) async {
     final Directory docs = await getApplicationDocumentsDirectory();
     final Directory dir = Directory(
-      '${docs.path}${Platform.pathSeparator}Pocket AMP Upgrader',
+      '${docs.path}${Platform.pathSeparator}Pocket AMP Tools',
     );
     await dir.create(recursive: true);
     return File('${dir.path}${Platform.pathSeparator}$name');

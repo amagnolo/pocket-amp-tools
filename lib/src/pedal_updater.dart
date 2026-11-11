@@ -9,6 +9,7 @@ import 'dart:collection';
 import 'dart:typed_data';
 
 import 'firmware_package.dart';
+import 'presets/preset_session.dart';
 import 'midi/midi_backend.dart';
 import 'ota_protocol.dart';
 
@@ -219,7 +220,11 @@ class PedalUpdater {
   /// [known], other ports are only probed if their name is not in it, i.e.
   /// they appeared after [known] was taken.
   Future<List<MidiPortRef>> _candidates([Set<String>? known]) async {
-    final List<MidiPortRef> ports = await backend.listPorts();
+    // Bluetooth ports never get update traffic, not even the identity query.
+    final List<MidiPortRef> ports = <MidiPortRef>[
+      for (final MidiPortRef p in await backend.listPorts())
+        if (!p.bluetooth) p,
+    ];
     return <MidiPortRef>[
       ...ports.where(looksLikePedal),
       ...ports.where(
@@ -273,12 +278,39 @@ class PedalUpdater {
         return DetectedPedal(p, hit.$2);
       }
     }
+    return _detectBluetooth();
+  }
+
+  /// A Pocket AMP over Bluetooth, confirmed by reading its active preset.
+  /// The radio does not tell the firmware version.
+  Future<DetectedPedal?> _detectBluetooth() async {
+    for (final MidiPortRef p in await backend.listPorts()) {
+      if (!p.bluetooth) {
+        continue;
+      }
+      try {
+        final PresetSession s = PresetSession(await backend.open(p));
+        try {
+          await s.readLive();
+        } finally {
+          await s.close();
+        }
+        final String id = _isSupported(p.name) ? p.name : 'Pocket AMP_BLE';
+        _log('Found "$id" over Bluetooth');
+        return DetectedPedal(p, id);
+      } catch (e) {
+        _log('  ${p.name} (Bluetooth): $e');
+      }
+    }
     return null;
   }
 
   /// Reasons the update must not start, or empty when it may.
   List<String> blockers(FirmwarePackage pkg, DetectedPedal pedal) {
     return <String>[
+      if (pedal.port.bluetooth)
+        'The pedal is connected over Bluetooth. Firmware updates need the '
+            'USB cable.',
       if (!pkg.isSupportedProduct)
         'This package is for "${pkg.productFamily}", which this tool does not support.',
       if (!trustedLoaders.contains(pkg.loaderSha256))
@@ -307,21 +339,31 @@ class PedalUpdater {
       throw UpdateException(no.join('\n'));
     }
     onProgress(const UpdateProgress(UpdatePhase.preparing, null));
+    final List<MidiPortRef> before = await backend.listPorts();
     final Set<String> others = <String>{
-      for (final MidiPortRef p in await backend.listPorts())
+      for (final MidiPortRef p in before)
         if (!looksLikePedal(p)) p.name,
+    };
+    // Another pedal plugged in at the same time must never be taken for
+    // this one when it comes back.
+    final Set<String> otherPedals = <String>{
+      for (final MidiPortRef p in before)
+        if (looksLikePedal(p) && p.id != pedal.port.id) p.id,
     };
     OtaLink link = OtaLink(await backend.open(pedal.port));
     try {
       final String? name = await link.identity(timings.identityTimeout);
-      if (name == null || familyOf(name) != pkg.productFamily) {
+      // Exactly the pedal the user confirmed, not just one of its family.
+      if (name != pedal.identity) {
         throw UpdateException(
-          'The pedal did not confirm its identity (got ${name ?? 'nothing'}).',
+          'The pedal did not confirm its identity (expected '
+          '"${pedal.identity}", got ${name == null ? 'nothing' : '"$name"'}). '
+          'Click Detect again.',
         );
       }
       _log('Pedal "$name" -> package "${pkg.product}" (sha256 ${pkg.sha256})');
 
-      if (!name.startsWith('ota-')) {
+      if (!pedal.identity.startsWith('ota-')) {
         await link.send(armMessage);
         await _serve(
           link,
@@ -338,6 +380,7 @@ class PedalUpdater {
           (String id) => id.startsWith('ota-') && _isSupported(id),
           timings.waitLoader,
           others,
+          otherPedals,
         );
       }
 
@@ -358,6 +401,7 @@ class PedalUpdater {
         (String id) => !id.startsWith('ota-') && _isSupported(id),
         timings.waitReboot,
         others,
+        otherPedals,
       );
       await link.close();
       _log('Pedal is back as "$result"');
@@ -379,10 +423,14 @@ class PedalUpdater {
     bool Function(String) accept,
     Duration limit,
     Set<String> known,
+    Set<String> skipIds,
   ) async {
     final Stopwatch clock = Stopwatch()..start();
     while (clock.elapsed < limit) {
       for (final MidiPortRef p in await _candidates(known)) {
+        if (skipIds.contains(p.id)) {
+          continue;
+        }
         final (OtaLink, String)? hit = await _probe(p, accept);
         if (hit != null) {
           _log('Found "${hit.$2}" on ${p.name}');

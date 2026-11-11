@@ -17,8 +17,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
@@ -35,17 +35,17 @@ jobs:
         include:
           - os: ubuntu-22.04
             target: linux
-            artifact: pocket-amp-upgrader-linux-x64.tar.gz
+            artifact: pocket-amp-tools-linux-x64.tar.gz
           - os: windows-latest
             target: windows
-            artifact: pocket-amp-upgrader-windows-x64.zip
+            artifact: pocket-amp-tools-windows-x64.zip
           - os: macos-latest
             target: macos
-            artifact: pocket-amp-upgrader-macos.zip
+            artifact: pocket-amp-tools-macos.zip
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
@@ -62,38 +62,45 @@ jobs:
       - name: Package (Linux)
         if: matrix.target == 'linux'
         run: |
-          mv build/linux/x64/release/bundle pocket-amp-upgrader
-          tar czf ${{ matrix.artifact }} pocket-amp-upgrader
+          mv build/linux/x64/release/bundle pocket-amp-tools
+          tar czf ${{ matrix.artifact }} pocket-amp-tools
+          # Both downloads are pinned by checksum: the runtime becomes the
+          # first code the shipped AppImage runs.
           curl -sfL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          curl -sfL -o runtime-x86_64 https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
+          sha256sum -c - <<'SUMS'
+          ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0  appimagetool
+          2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d  runtime-x86_64
+          SUMS
           chmod +x appimagetool
-          linux/packaging/build-appimage.sh pocket-amp-upgrader ./appimagetool Pocket_AMP_Upgrader-x86_64.AppImage
+          RUNTIME_FILE="$PWD/runtime-x86_64" linux/packaging/build-appimage.sh pocket-amp-tools ./appimagetool Pocket_AMP_Tools-x86_64.AppImage
 
       - name: Upload AppImage
         if: matrix.target == 'linux'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: Pocket_AMP_Upgrader-x86_64.AppImage
-          path: Pocket_AMP_Upgrader-x86_64.AppImage
+          name: Pocket_AMP_Tools-x86_64.AppImage
+          path: Pocket_AMP_Tools-x86_64.AppImage
           if-no-files-found: error
 
       - name: Package (Windows)
         if: matrix.target == 'windows'
         shell: pwsh
         run: |
-          Rename-Item build/windows/x64/runner/Release pocket-amp-upgrader
+          Rename-Item build/windows/x64/runner/Release pocket-amp-tools
           # App-local Visual C++ runtime, so the app starts on machines without
           # the redistributable installed.
           foreach ($dll in 'msvcp140.dll','vcruntime140.dll','vcruntime140_1.dll') {
-            Copy-Item "$env:WINDIR\System32\$dll" build/windows/x64/runner/pocket-amp-upgrader/
+            Copy-Item "$env:WINDIR\System32\$dll" build/windows/x64/runner/pocket-amp-tools/
           }
-          Compress-Archive -Path build/windows/x64/runner/pocket-amp-upgrader -DestinationPath ${{ matrix.artifact }}
+          Compress-Archive -Path build/windows/x64/runner/pocket-amp-tools -DestinationPath ${{ matrix.artifact }}
 
       - name: Package (macOS)
         if: matrix.target == 'macos'
         run: |
-          ditto -c -k --sequesterRsrc --keepParent "build/macos/Build/Products/Release/Pocket AMP Upgrader.app" ${{ matrix.artifact }}
+          ditto -c -k --sequesterRsrc --keepParent "build/macos/Build/Products/Release/Pocket AMP Tools.app" ${{ matrix.artifact }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
@@ -106,13 +113,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: dist
           merge-multiple: true
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS.txt
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: dist/*
           prerelease: ${{ contains(github.ref_name, '-') }}

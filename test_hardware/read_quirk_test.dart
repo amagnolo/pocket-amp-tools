@@ -4,9 +4,9 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pocket_amp_upgrader/src/midi/alsa_backend.dart';
-import 'package:pocket_amp_upgrader/src/midi/midi_backend.dart';
-import 'package:pocket_amp_upgrader/src/presets/preset_session.dart';
+import 'package:pocket_amp_tools/src/midi/alsa_backend.dart';
+import 'package:pocket_amp_tools/src/midi/midi_backend.dart';
+import 'package:pocket_amp_tools/src/presets/preset_session.dart';
 
 void main() {
   test('flash read quirk', () async {

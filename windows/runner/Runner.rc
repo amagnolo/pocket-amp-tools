@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "Pocket AMP Upgrader contributors" "\0"
-            VALUE "FileDescription", "Pocket AMP Upgrader" "\0"
+            VALUE "CompanyName", "Pocket AMP Tools contributors" "\0"
+            VALUE "FileDescription", "Pocket AMP Tools" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "Pocket AMP Upgrader" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 Pocket AMP Upgrader contributors. GPL-3.0." "\0"
-            VALUE "OriginalFilename", "pocket-amp-upgrader.exe" "\0"
-            VALUE "ProductName", "Pocket AMP Upgrader" "\0"
+            VALUE "InternalName", "Pocket AMP Tools" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Pocket AMP Tools contributors. GPL-3.0." "\0"
+            VALUE "OriginalFilename", "pocket-amp-tools.exe" "\0"
+            VALUE "ProductName", "Pocket AMP Tools" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

@@ -199,6 +199,10 @@ class _AlsaConnection implements MidiConnection {
             throw const MidiIoException('MIDI output stalled.');
           }
           await Future<void>.delayed(const Duration(milliseconds: 1));
+          // Closed while waiting: the handle is freed, never use it again.
+          if (!identical(_out, out)) {
+            throw const MidiPortGone();
+          }
           continue;
         }
         if (r < 0) {
@@ -207,7 +211,13 @@ class _AlsaConnection implements MidiConnection {
         }
         written += r;
       }
-      _alsa.drain(out);
+      // On a timeout the kernel drops what was not sent: that is a failure,
+      // not "taken by the OS".
+      final int drained = _alsa.drain(out);
+      if (drained < 0) {
+        _lost = _Alsa.gone.contains(drained);
+        throw MidiPortGone('(drain error $drained)');
+      }
     } finally {
       calloc.free(data);
     }

@@ -1,13 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pocket_amp_upgrader/src/midi/midi_backend.dart';
-import 'package:pocket_amp_upgrader/src/ota_protocol.dart';
-import 'package:pocket_amp_upgrader/src/presets/mefcs.dart';
-import 'package:pocket_amp_upgrader/src/presets/preset_backup.dart';
-import 'package:pocket_amp_upgrader/src/presets/preset_session.dart';
+import 'package:pocket_amp_tools/src/midi/midi_backend.dart';
+import 'package:pocket_amp_tools/src/ota_protocol.dart';
+import 'package:pocket_amp_tools/src/presets/mefcs.dart';
+import 'package:pocket_amp_tools/src/presets/preset_backup.dart';
+import 'package:pocket_amp_tools/src/presets/preset_session.dart';
+
+import 'support/fake_pedal.dart';
 
 String hex(List<int> b) => b
     .map((int x) => x.toRadixString(16).padLeft(2, '0').toUpperCase())
@@ -67,14 +70,8 @@ class FakeBank implements MidiConnection {
   Future<void> close() => _out.close();
 }
 
-Uint8List bank() {
-  final Uint8List a = Uint8List(eqTableAddress + eqTableLength);
-  for (int i = 0; i < eqTableAddress; i++) {
-    a[i] = (i * 13) & 0x7F;
-  }
-  a.setAll(eqTableAddress, eqHeader);
-  return a;
-}
+/// A bank in the ranges the firmware keeps (the guard refuses others).
+Uint8List bank() => demoBank();
 
 void main() {
   test('packets match the bytes measured on the pedal', () {
@@ -135,17 +132,18 @@ void main() {
     await s.close();
   });
 
-  test('the backup file also shows the presets as plain fields', () {
+  test('the backup file holds the presets as named fields', () {
     final Uint8List a = Uint8List(eqTableAddress + eqTableLength)
       ..setAll(eqTableAddress, eqHeader);
     // P02: volume 60, MOD first in the chain, AMP on with model 7 and its
-    // first knob at 300; a 5-band EQ at the head.
+    // first knob at 44; a 5-band EQ at the head.
     final int p02 = presetSize;
     a[p02] = 60;
-    a.setAll(p02 + 2, <int>[2, 0, 1, 3, 4, 6]); // 6 is not a block
+    a.setAll(p02 + 2, <int>[2, 0, 1, 3, 5, 4]);
     a[p02 + 8 + 1] = 1;
     a[p02 + 14 + 1] = 7;
-    a.setAll(p02 + 20 + 12, <int>[0x2C, 0x01]);
+    a[p02 + 14 + 3] = 9; // DLY has 5 models: 9 stays a number
+    a.setAll(p02 + 20 + 12, <int>[44, 0]);
     final int eq = eqTableAddress + eqHeaderLength;
     a.setAll(eq + eqRecordLength, <int>[1, 1, 6, 0xFA, 0, 0, 3]);
 
@@ -157,29 +155,141 @@ void main() {
     );
     final Map<String, Object?> file =
         jsonDecode(b.toJson()) as Map<String, Object?>;
-    final List<Object?> readable = file['readable']! as List<Object?>;
-    expect(readable, hasLength(presetCount));
-    expect(readable[1], <String, Object>{
-      'preset': 'P02',
-      'volume': 60,
-      'chain': <Object>['MOD', 'FX', 'AMP', 'DLY', 'REV', 6],
-      'blocks': <String, Object>{
-        for (final String name in blockNames)
-          name: <String, Object>{
-            'on': name == 'AMP',
-            'model': name == 'AMP' ? 7 : 0,
-            'knobs': <int>[name == 'AMP' ? 300 : 0, 0, 0, 0, 0, 0],
-          },
-      },
-      'eq': <String, Object>{
-        'on': true,
-        'position': 'head',
-        'bands': <int>[6, -6, 0, 0, 3],
+    expect(file['format'], 'pocket-amp-upgrader/presets@2');
+    final List<Object?> presets = file['presets']! as List<Object?>;
+    expect(presets, hasLength(presetCount));
+    final Map<String, Object?> p = presets[1]! as Map<String, Object?>;
+    expect(p['chain'], <Object>['MOD', 'FX', 'AMP', 'DLY', 'CAB', 'REV']);
+    final Map<String, Object?> blocks = p['blocks']! as Map<String, Object?>;
+    expect(blocks['AMP'], <String, Object>{
+      'on': true,
+      'model': '8DARKS_DS',
+      'knobs': <String, int>{
+        'Gain': 44,
+        'Level': 0,
+        'Bass': 0,
+        'Mid': 0,
+        'Treble': 0,
+        'knob6': 0,
       },
     });
-    // Restore still reads the raw data, whatever "readable" says.
-    file['readable'] = <Object>[];
-    expect(PresetBackup.fromJson(jsonEncode(file)).presets, b.presets);
+    expect((blocks['DLY']! as Map<String, Object?>)['model'], 9);
+    expect(p['eq'], <String, Object>{
+      'on': true,
+      'position': 'head',
+      'bands': <int>[6, -6, 0, 0, 3],
+    });
+
+    // Editing a field changes what is restored.
+    ((blocks['AMP']! as Map<String, Object?>)['knobs']!
+            as Map<String, Object?>)['Treble'] =
+        70;
+    (blocks['AMP']! as Map<String, Object?>)['model'] = '3JC120_CL';
+    final PresetBackup edited = PresetBackup.fromJson(jsonEncode(file));
+    final Uint8List want = Uint8List.fromList(b.presets)
+      ..[p02 + 20 + 12 + 8] = 70
+      ..[p02 + 14 + 1] = 2;
+    expect(edited.presets, want);
+    expect(edited.eq, b.eq);
+  });
+
+  test('every byte survives the trip through the named fields', () {
+    // Every value the pedal keeps: volume and knobs 0..100, any order of
+    // the chain, on/off, any model byte, EQ bands -6..6.
+    final Random r = Random(11);
+    final Uint8List a = Uint8List(eqTableAddress + eqTableLength)
+      ..setAll(eqTableAddress, eqHeader);
+    for (int id = 0; id < presetCount; id++) {
+      final int p = id * presetSize;
+      a[p] = r.nextInt(101);
+      a.setAll(p + 2, <int>[0, 1, 2, 3, 4, 5]..shuffle(r));
+      for (int b = 0; b < 6; b++) {
+        a[p + 8 + b] = r.nextInt(2);
+        a[p + 14 + b] = r.nextInt(256);
+        for (int k = 0; k < 6; k++) {
+          a[p + 20 + b * 12 + k * 2] = r.nextInt(101);
+        }
+      }
+      a.setAll(eqTableAddress + eqHeaderLength + id * eqRecordLength, <int>[
+        r.nextInt(2),
+        r.nextInt(2),
+        for (int band = 0; band < 5; band++) (r.nextInt(13) - 6) & 0xFF,
+      ]);
+    }
+    final PresetBackup b = PresetBackup(
+      identity: 'x',
+      created: DateTime.utc(2026),
+      presets: Uint8List.sublistView(a, 0, eqTableAddress),
+      eq: Uint8List.sublistView(a, eqTableAddress),
+    );
+    final PresetBackup back = PresetBackup.fromJson(b.toJson());
+    expect(back.presets, b.presets);
+    expect(back.eq, b.eq);
+  });
+
+  test('an edit the pedal cannot take is refused with its place', () {
+    final PresetBackup b = PresetBackup(
+      identity: 'x',
+      created: DateTime.utc(2026),
+      presets: Uint8List(presetCount * presetSize),
+      eq: Uint8List(eqTableLength)..setAll(0, eqHeader),
+    );
+    Map<String, Object?> file() =>
+        jsonDecode(b.toJson()) as Map<String, Object?>;
+    Map<String, Object?> block(Map<String, Object?> f, String name) =>
+        (((f['presets']! as List<Object?>)[2]!
+                    as Map<String, Object?>)['blocks']!
+                as Map<String, Object?>)[name]!
+            as Map<String, Object?>;
+    void refused(Map<String, Object?> f, String message) => expect(
+      () => PresetBackup.fromJson(jsonEncode(f)),
+      throwsA(
+        isA<FormatException>().having(
+          (FormatException e) => e.message,
+          'message',
+          contains(message),
+        ),
+      ),
+    );
+
+    final Map<String, Object?> model = file();
+    block(model, 'MOD')['model'] = 'Wah';
+    refused(model, 'P03 MOD.model: "Wah" is not one of Chorus');
+
+    // Phaser has four knobs, Chorus three: the knob names must follow.
+    final Map<String, Object?> knobs = file();
+    block(knobs, 'MOD')['model'] = 'Phaser';
+    refused(knobs, 'P03 MOD.knobs: model Phaser needs exactly');
+
+    final Map<String, Object?> range = file();
+    (block(range, 'AMP')['knobs']! as Map<String, Object?>)['Gain'] = 70000;
+    refused(range, 'P03 AMP.Gain: expected a whole number from 0 to 65535');
+
+    final Map<String, Object?> order = file();
+    (order['presets']! as List<Object?>).removeAt(0);
+    refused(order, 'must list all 80 presets');
+  });
+
+  test('a version 1 backup is restored from its raw data', () {
+    final Uint8List a = bank();
+    final PresetBackup b = PresetBackup(
+      identity: 'x',
+      created: DateTime.utc(2026),
+      presets: Uint8List.sublistView(a, 0, eqTableAddress),
+      eq: Uint8List.sublistView(a, eqTableAddress),
+    );
+    final PresetBackup v1 = PresetBackup.fromJson(
+      jsonEncode(<String, Object>{
+        'format': 'pocket-amp-upgrader/presets@1',
+        'pedal': 'x',
+        'created': '2026-01-01T00:00:00.000Z',
+        'readable': <Object>[],
+        'presets': base64Encode(b.presets),
+        'eq': base64Encode(b.eq),
+      }),
+    );
+    expect(v1.presets, b.presets);
+    expect(v1.eq, b.eq);
   });
 
   test(
@@ -214,12 +324,12 @@ void main() {
     },
   );
 
-  test('restore with nothing to do writes nothing', () async {
+  test('restore with nothing to do still stores, once', () async {
     final FakeBank pedal = FakeBank(bank());
     final PresetSession s = PresetSession(pedal);
     final PresetBackup saved = await readPresetBank(s, 'x');
     expect((await restorePresetBank(s, saved)).isEmpty, isTrue);
-    expect(pedal.writes, isEmpty);
+    expect(pedal.writes, <String>['commit']);
     await s.close();
   });
   test('unknown layout keeps the raw bytes', () async {
@@ -238,4 +348,96 @@ void main() {
     );
     await s.close();
   });
+
+  test('a backup of the real EQ table opens again', () async {
+    // Records as read from a V1.05 pedal on 2026-11-07: position 0x80 and
+    // bands far outside -6..6.
+    final Uint8List a = bank()
+      ..setAll(eqTableAddress + eqHeaderLength, <int>[
+        1,
+        0x80,
+        3,
+        0x78,
+        1,
+        0xBC,
+        0x1E,
+      ]);
+    final PresetSession s = PresetSession(FakeBank(a));
+    final PresetBackup saved = await readPresetBank(s, 'x');
+    await s.close();
+    final PresetBackup back = PresetBackup.fromJson(saved.toJson());
+    expect(back.eq, saved.eq);
+    expect(back.presets, saved.presets);
+  });
+
+  test('a restore whose store was lost is stored by the next one', () async {
+    final _DropCommit pedal = _DropCommit(bank());
+    final PresetSession s = PresetSession(pedal);
+    final PresetBackup saved = await readPresetBank(s, 'x');
+    final PresetBackup want = saved.copy()..setVolume(0, 10);
+    await expectLater(
+      restorePresetBank(s, want),
+      throwsA(isA<PresetIoException>()),
+    );
+    pedal.drop = false;
+    await restorePresetBank(s, want);
+    expect(pedal.flash.sublist(0, 2), <int>[10, 0]);
+    await s.close();
+  }, timeout: const Timeout(Duration(seconds: 40)));
+
+  test('a slow store is not sent again', () async {
+    final _DropCommit pedal = _DropCommit(bank())
+      ..drop = false
+      ..commitDelay = const Duration(milliseconds: 2500);
+    final PresetSession s = PresetSession(pedal);
+    final PresetBackup saved = await readPresetBank(s, 'x');
+    await restorePresetBank(s, saved.copy()..setVolume(0, 11));
+    expect(pedal.commits, 1);
+    expect(pedal.flash.sublist(0, 2), <int>[11, 0]);
+    await s.close();
+  }, timeout: const Timeout(Duration(seconds: 40)));
+
+  test('a file cannot put a model the pedal lacks into a slot', () async {
+    final FakeBank pedal = FakeBank(bank());
+    final PresetSession s = PresetSession(pedal);
+    final PresetBackup saved = await readPresetBank(s, 'x');
+    final Map<String, Object?> j =
+        jsonDecode(saved.toJson()) as Map<String, Object?>;
+    final Map<String, Object?> amp =
+        ((((j['presets']! as List<Object?>)[0]!
+                    as Map<String, Object?>)['blocks']!
+                as Map<String, Object?>)['AMP']!
+            as Map<String, Object?>);
+    amp['model'] = 20; // AMP has 20 models: 0..19
+    amp['knobs'] = <String, int>{for (int k = 1; k <= 6; k++) 'knob$k': 50};
+    await expectLater(
+      restorePresetBank(s, PresetBackup.fromJson(jsonEncode(j))),
+      throwsA(isA<PresetIoException>()),
+    );
+    expect(pedal.writes, isEmpty);
+    await s.close();
+  });
+}
+
+/// Ignores Commit while [drop]; can answer it late, and counts them.
+class _DropCommit extends FakeBank {
+  _DropCommit(super.flash);
+  bool drop = true;
+  Duration commitDelay = Duration.zero;
+  int commits = 0;
+
+  @override
+  Future<void> send(Uint8List sysex) async {
+    final Uint8List p = mefcsUnwrap(sysex)!;
+    if (p[2] == 0x22 && p[10] == 0xF0) {
+      commits++;
+      if (drop) {
+        return;
+      }
+      if (commitDelay > Duration.zero) {
+        await Future<void>.delayed(commitDelay);
+      }
+    }
+    return super.send(sysex);
+  }
 }

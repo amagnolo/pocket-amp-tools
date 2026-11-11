@@ -18,7 +18,7 @@ GOLD = ROOT / "test_screens" / "goldens"
 DOCS = ROOT / "docs"
 ICON = ROOT / "assets" / "icon" / "app_icon.png"
 
-SHOT_W, SHOT_H = 1440, 2140  # render width; height trimmed below "About"
+SHOT_W, SHOT_H = 2560, 1600  # the presets editor at 1280x800, 2x
 BAR = 72  # title bar height at 2x
 
 THEMES = {
@@ -48,9 +48,9 @@ def window(t, shot, x, y, scale):
       <rect width="{w}" height="{BAR * scale}" fill="{t['bar']}"/>
       <text x="{w / 2}" y="{BAR * scale * .62}" text-anchor="middle"
             font-family="Noto Sans" font-weight="600"
-            font-size="{26 * scale}" fill="{t['title']}">Pocket AMP Upgrader</text>
+            font-size="{26 * scale}" fill="{t['title']}">Pocket AMP Tools</text>
       <image href="{uri(shot)}" x="0" y="{BAR * scale}" width="{SHOT_W * scale}"
-             height="{2200 * scale}" preserveAspectRatio="xMinYMin slice"/>
+             height="{SHOT_H * scale}" preserveAspectRatio="xMinYMin slice"/>
     </g>
     <rect width="{w}" height="{h}" rx="{r}" fill="none"
           stroke="{t['line']}" stroke-width="{2 * scale}"/>
@@ -87,7 +87,7 @@ def screenshot(name):
   {DEFS.format(**t)}
   <rect width="{W}" height="{H}" fill="{t['page']}"/>
   <rect width="{W}" height="{H}" fill="url(#glow)"/>
-  {window(t, GOLD / f"ready-{name}.png", pad, pad, 1)}
+  {window(t, GOLD / f"layout-presets-{name}.png", pad, pad, 1)}
 </svg>"""
     render(svg, DOCS / f"screenshot-{name}.png", W)
 
@@ -95,7 +95,7 @@ def screenshot(name):
 def social():
     t = THEMES["dark"]
     W, H = 1280, 640
-    s = 0.36
+    s = 0.30
     svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}">
   {DEFS.format(**t)}
   <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
@@ -104,15 +104,15 @@ def social():
   </linearGradient>
   <rect width="{W}" height="{H}" fill="{t['page']}"/>
   <rect width="{W}" height="{H}" fill="url(#glow)"/>
-  {window(t, GOLD / "ready-dark.png", 724, 64, s)}
+  {window(t, GOLD / "layout-presets-dark.png", 700, 120, s)}
   <rect x="700" y="0" width="{W - 640}" height="{H}" fill="url(#fade)"/>
   <image href="{uri(ICON)}" x="64" y="88" width="88" height="88"/>
   <text font-family="Noto Sans" fill="#f1dfda">
-    <tspan x="64" y="268" font-size="54" font-weight="700">Update your</tspan>
-    <tspan x="64" y="336" font-size="54" font-weight="700">Pocket AMP firmware</tspan>
+    <tspan x="64" y="268" font-size="54" font-weight="700">Edit and update</tspan>
+    <tspan x="64" y="336" font-size="54" font-weight="700">your Pocket AMP</tspan>
   </text>
-  <text x="64" y="398" font-family="Noto Sans" font-size="27" fill="#d8c2bb">from macOS, Linux or Windows</text>
-  <text x="64" y="440" font-family="Noto Sans" font-size="27" fill="#d8c2bb">and keep your 80 presets</text>
+  <text x="64" y="398" font-family="Noto Sans" font-size="27" fill="#d8c2bb">presets, IRs and firmware</text>
+  <text x="64" y="440" font-family="Noto Sans" font-size="27" fill="#d8c2bb">from macOS, Linux or Windows</text>
   <rect x="64" y="496" width="404" height="52" rx="26" fill="none" stroke="#ffb59a" stroke-width="2"/>
   <text x="266" y="530" text-anchor="middle" font-family="Noto Sans" font-weight="600" font-size="21" fill="#ffb59a">Free &amp; open source · GPL-3.0</text>
 </svg>"""
@@ -121,8 +121,8 @@ def social():
 
 if __name__ == "__main__":
     for n in ("dark", "light"):
-        if not (GOLD / f"ready-{n}.png").exists():
-            sys.exit(f"missing goldens/ready-{n}.png: render them first")
+        if not (GOLD / f"layout-presets-{n}.png").exists():
+            sys.exit(f"missing goldens/layout-presets-{n}.png: render them first")
     screenshot("dark")
     screenshot("light")
     social()

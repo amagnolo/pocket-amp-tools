@@ -6,6 +6,7 @@ import 'dart:typed_data';
 
 import '../midi/midi_backend.dart';
 import 'mefcs.dart';
+import 'write_guard.dart';
 
 class PresetIoException implements Exception {
   const PresetIoException(this.message);
@@ -73,13 +74,15 @@ class PresetSession {
   /// Sends [packet] and returns the first reply accepted by [want].
   Future<Uint8List?> _exchange(
     Uint8List packet,
-    bool Function(Uint8List reply) want,
-  ) async {
+    bool Function(Uint8List reply) want, {
+    Duration wait = timeout,
+  }) async {
+    checkOutgoing(packet);
     _queue.clear();
     await _conn.send(mefcsWrap(packet));
     final Stopwatch clock = Stopwatch()..start();
-    while (clock.elapsed < timeout) {
-      final Uint8List? r = await _next(timeout - clock.elapsed);
+    while (clock.elapsed < wait) {
+      final Uint8List? r = await _next(wait - clock.elapsed);
       if (r != null && want(r)) {
         return r;
       }
@@ -91,11 +94,11 @@ class PresetSession {
   /// the payload comes back intact, byte 0 included (checked on hardware by
   /// reading the same bytes with and without one byte in front).
   Future<Uint8List> readRaw(int address, int length) async {
-    final int expected = 14 + length + 1;
+    final Uint8List request = readFlashPacket(address, length);
     for (int i = 0; i < attempts; i++) {
       final Uint8List? r = await _exchange(
-        readFlashPacket(address, length),
-        (Uint8List p) => p.length == expected,
+        request,
+        (Uint8List p) => _answers(p, request, length),
       );
       if (r != null) {
         return Uint8List.sublistView(r, 14, r.length - 1);
@@ -104,10 +107,55 @@ class PresetSession {
     throw PresetIoException('No answer reading $length bytes at $address.');
   }
 
-  /// Sends a write and waits for the device ACK.
-  Future<void> write(Uint8List packet, String what) async {
+  /// The live RAM of the active preset, 92 bytes in the preset layout.
+  Future<Uint8List> readLive() async {
     for (int i = 0; i < attempts; i++) {
-      final Uint8List? r = await _exchange(packet, isAck);
+      final Uint8List? r = await _exchange(
+        readLivePacket(),
+        (Uint8List p) => _answers(p, readLivePacket(), presetSize),
+      );
+      if (r != null) {
+        return Uint8List.sublistView(r, 14, r.length - 1);
+      }
+    }
+    throw const PresetIoException('No answer reading the active preset.');
+  }
+
+  /// The 20 model names stored in flash for AMP ([amp]) or CAB, as stored,
+  /// index prefix included. The first character of the first name is not
+  /// what is stored: the pedal overwrites it with the request's checksum.
+  Future<List<String>> readNames({required bool amp}) async {
+    for (int i = 0; i < attempts; i++) {
+      final Uint8List? r = await _exchange(
+        readNamesPacket(amp: amp),
+        (Uint8List p) => _answers(p, readNamesPacket(amp: amp), 20 * 14),
+      );
+      if (r != null) {
+        return <String>[
+          for (int n = 0; n < 20; n++)
+            String.fromCharCodes(
+              r
+                  .sublist(14 + n * 14, 28 + n * 14)
+                  .takeWhile((int c) => c != 0)
+                  .where((int c) => c >= 32 && c <= 126),
+            ),
+        ];
+      }
+    }
+    throw const PresetIoException('No answer reading the model names.');
+  }
+
+  /// Sends a write and waits for the device ACK. With [once], a write to
+  /// flash whose time is not measured, it is sent a single time with a long
+  /// wait: sending it again while the first may still be running is worse
+  /// than reporting no answer.
+  Future<void> write(Uint8List packet, String what, {bool once = false}) async {
+    for (int i = 0; i < (once ? 1 : attempts); i++) {
+      final Uint8List? r = await _exchange(
+        packet,
+        isAck,
+        wait: once ? const Duration(seconds: 10) : timeout,
+      );
       if (r != null) {
         return;
       }
@@ -123,4 +171,19 @@ class PresetSession {
       // The pedal may already be gone.
     }
   }
+}
+
+/// Whether [reply] answers the read [request]: same command and route, the
+/// address and length echoed back, and [length] bytes of data. A late answer
+/// to an earlier read of the same size is not taken for this one.
+bool _answers(Uint8List reply, Uint8List request, int length) {
+  if (reply.length != 14 + length + 1 || reply[2] != request[2]) {
+    return false;
+  }
+  for (int i = 6; i < 14; i++) {
+    if (reply[i] != request[i]) {
+      return false;
+    }
+  }
+  return true;
 }

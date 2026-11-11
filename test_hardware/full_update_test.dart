@@ -7,11 +7,11 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pocket_amp_upgrader/src/firmware_package.dart';
-import 'package:pocket_amp_upgrader/src/midi/alsa_backend.dart';
-import 'package:pocket_amp_upgrader/src/pedal_updater.dart';
-import 'package:pocket_amp_upgrader/src/presets/preset_backup.dart';
-import 'package:pocket_amp_upgrader/src/presets/preset_service.dart';
+import 'package:pocket_amp_tools/src/firmware_package.dart';
+import 'package:pocket_amp_tools/src/midi/alsa_backend.dart';
+import 'package:pocket_amp_tools/src/pedal_updater.dart';
+import 'package:pocket_amp_tools/src/presets/preset_backup.dart';
+import 'package:pocket_amp_tools/src/presets/preset_service.dart';
 
 void main() {
   final Map<String, String> env = Platform.environment;

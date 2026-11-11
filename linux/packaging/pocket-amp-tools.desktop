@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=Pocket AMP Upgrader
+Name=Pocket AMP Tools
 Comment=Update the M-VAVE Pocket AMP firmware over USB
-Exec=pocket-amp-upgrader
-Icon=pocket-amp-upgrader
+Exec=pocket-amp-tools
+Icon=pocket-amp-tools
 Categories=AudioVideo;Audio;Utility;
 Terminal=false
