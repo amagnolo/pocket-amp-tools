@@ -223,6 +223,9 @@ class PresetService {
 
   static Future<(File, PresetBackup?, String?)> _read(File f) async {
     try {
+      if (await f.length() > 4 << 20) {
+        throw const FormatException('too large for a backup');
+      }
       return (f, PresetBackup.fromJson(await f.readAsString()), null);
     } catch (e) {
       return (f, null, '$e');

@@ -29,7 +29,8 @@ class AssistantSettings {
   final String baseUrl;
   final String model;
 
-  /// Kept in plain text in the app's support folder, like the editor did.
+  /// Kept in plain text in the app's support folder, readable only by the
+  /// user.
   final String apiKey;
 
   bool get ready => baseUrl.trim().isNotEmpty && model.trim().isNotEmpty;
@@ -84,21 +85,26 @@ class AssistantSettings {
   Future<void> save() async {
     final File f = await _file();
     await f.parent.create(recursive: true);
-    await f.writeAsString(
+    // Written aside and locked down before it takes the real name, so the
+    // key is never readable by others, even for a moment.
+    final File tmp = File('${f.path}.tmp');
+    await tmp.writeAsString('');
+    if (Platform.isLinux || Platform.isMacOS) {
+      try {
+        await Process.run('chmod', <String>['600', tmp.path]);
+      } catch (_) {
+        // Best effort: the file still works.
+      }
+    }
+    await tmp.writeAsString(
       jsonEncode(<String, String>{
         'baseUrl': baseUrl.trim(),
         'model': model.trim(),
         'apiKey': apiKey.trim(),
       }),
+      flush: true,
     );
-    // Readable only by this user, where the system allows it.
-    if (Platform.isLinux || Platform.isMacOS) {
-      try {
-        await Process.run('chmod', <String>['600', f.path]);
-      } catch (_) {
-        // Best effort: the file still works.
-      }
-    }
+    await tmp.rename(f.path);
   }
 }
 
@@ -155,6 +161,8 @@ Future<Map<String, Object?>> askAssistant(
   final Uint8List bytes;
   try {
     final http.Request post = http.Request('POST', settings.endpoint)
+      // A redirect would carry the key to a host the user did not set.
+      ..followRedirects = false
       ..headers.addAll(<String, String>{
         'content-type': 'application/json',
         if (settings.apiKey.trim().isNotEmpty)

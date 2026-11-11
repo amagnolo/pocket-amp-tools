@@ -223,7 +223,13 @@ class _HomePageState extends State<HomePage> {
     if (file == null) {
       return;
     }
-    await _loadPackage(() => file.readAsBytes(), file.name);
+    await _loadPackage(() async {
+      // The package is about 750 KB; anything past 4 MB is not it.
+      if (await file.length() > 4 << 20) {
+        throw const FormatException('the file is too large for a package');
+      }
+      return file.readAsBytes();
+    }, file.name);
   }
 
   Future<void> _download() async {
@@ -567,6 +573,10 @@ class _HomePageState extends State<HomePage> {
       return;
     }
     try {
+      // A full backup is about 100 KB.
+      if (await file.length() > 4 << 20) {
+        throw const FormatException('the file is too large for a backup');
+      }
       _workspace.load(
         PresetBackup.fromJson(await file.readAsString()),
         file.name,
