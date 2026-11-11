@@ -352,6 +352,23 @@ void main() {
       expect(pedal.flashReceived, pkg.image);
     });
 
+    test("Donner's own package is refused, even for a Donner pedal", () {
+      final FirmwarePackage donner = FirmwarePackage.parse(
+        buildFwsc(product: 'DONNER Pocket AMP_008', loader: loader),
+      );
+      expect(donner.isSupportedProduct, isFalse);
+      expect(
+        updater(FakePedal(image: donner.image)).blockers(
+          donner,
+          const DetectedPedal(
+            MidiPortRef(id: 'pedal', name: 'USB-Midi'),
+            'DONNER Pocket AMP_008',
+          ),
+        ),
+        isNotEmpty,
+      );
+    });
+
     test('a Donner Pocket AMP is detected and takes the update', () async {
       final FakePedal pedal = FakePedal(
         image: pkg.image,
