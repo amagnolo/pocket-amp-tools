@@ -32,13 +32,19 @@ void main() {
           77 // MOD first knob, after the model change
       ..setAll(2, <int>[1, 0, 5, 4, 3, 2]);
     await link.show(4, edited);
-    await link.close();
+    await link.flush();
 
     expect(errors, isEmpty);
     expect(pedal.active, 4);
     expect(pedal.live.sublist(2, 20), edited.sublist(2, 20));
     expect(pedal.live[20 + 2 * 12], 77);
     expect(pedal.liveWrites.first, 'load 4');
+
+    // Closing loads the preset again: the edits played live, not stored,
+    // leave the pedal.
+    await link.close();
+    expect(pedal.liveWrites.last, 'load 4');
+    expect(pedal.live, _body(pedal, 4));
   });
 
   test('a knob moved many times is sent once, with the last value', () async {

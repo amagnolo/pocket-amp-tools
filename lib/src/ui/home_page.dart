@@ -690,9 +690,14 @@ class _HomePageState extends State<HomePage> {
       } else if (_workspace.onPedal != null) {
         _workspace.written(b);
       }
+      final String kept = d.skippedEq.isEmpty
+          ? ''
+          : ' The EQ of ${d.skippedEq.map((int i) => 'P${i + 1}').join(', ')} '
+                'was left as on the pedal: it is stored in a form this app '
+                'cannot write.';
       return d.isEmpty
-          ? 'Nothing to write: the pedal already matches.'
-          : 'Written and checked: $d.';
+          ? 'Nothing to write: the pedal already matches.$kept'
+          : 'Written and checked: $d.$kept';
     });
   }
 
@@ -1348,6 +1353,7 @@ class _ResultCard extends StatelessWidget {
 
 class ConfirmUpdateDialog extends StatefulWidget {
   const ConfirmUpdateDialog({
+    super.key,
     required this.from,
     required this.to,
     required this.rebrand,
