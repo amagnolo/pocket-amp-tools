@@ -126,6 +126,9 @@ bluetoothctl
 > quit
 ```
 
+> [!TIP]
+> Pocket AMP has two Bluetooth interfaces: to edit presets you need to pair with `Pocket AMP_BLE` (the data connection), not `Pocket AMP` (BT audio interface).
+
 ## Safety checks
 
 Before anything is written, the app:
