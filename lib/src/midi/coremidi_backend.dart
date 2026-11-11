@@ -59,12 +59,29 @@ class _CoreMidiConnection implements MidiConnection {
         _messages.add(m);
       }
     });
+    // CoreMIDI does not fail a send to a device that is gone: notice the
+    // unplug from the setup changes instead.
+    _setup = _midi.onMidiSetupChanged?.listen((MidiSetupChange c) async {
+      if (c != MidiSetupChange.deviceDisappeared &&
+          c != MidiSetupChange.deviceDisconnected) {
+        return;
+      }
+      final List<MidiDevice> now = await _midi.devices ?? <MidiDevice>[];
+      if (!now.any((MidiDevice d) => d.id == _device.id)) {
+        _gone = true;
+        if (!_messages.isClosed) {
+          _messages.addError(const MidiPortGone('(unplugged)'));
+        }
+      }
+    });
   }
 
   final MidiCommand _midi;
   final MidiDevice _device;
   StreamSubscription<MidiPacket>? _sub;
+  StreamSubscription<MidiSetupChange>? _setup;
   bool _closed = false;
+  bool _gone = false;
   final StreamController<Uint8List> _messages = StreamController<Uint8List>();
   final SysexSplitter _splitter = SysexSplitter();
 
@@ -73,7 +90,7 @@ class _CoreMidiConnection implements MidiConnection {
 
   @override
   Future<void> send(Uint8List sysex) async {
-    if (_closed) {
+    if (_closed || _gone) {
       throw const MidiPortGone();
     }
     _midi.sendData(sysex, deviceId: _device.id);
@@ -86,6 +103,7 @@ class _CoreMidiConnection implements MidiConnection {
     }
     _closed = true;
     await _sub?.cancel();
+    await _setup?.cancel();
     try {
       _midi.disconnectDevice(_device);
     } catch (_) {

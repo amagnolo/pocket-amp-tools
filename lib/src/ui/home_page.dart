@@ -882,11 +882,20 @@ class _HomePageState extends State<HomePage> {
         onRestore: (PresetBackup b, String name) => _restore(b, name),
         onRestoreRaw: (File f) async {
           final String name = f.uri.pathSegments.last;
-          _restoreRaw(
-            PresetService.rawIdentity(name) ?? '?',
-            await f.readAsBytes(),
-            name,
-          );
+          final Uint8List area;
+          try {
+            if (await f.length() > 4 << 20) {
+              throw const FileSystemException('too large for a raw copy');
+            }
+            area = await f.readAsBytes();
+          } on FileSystemException catch (e) {
+            setState(() {
+              _presetMessage = 'Could not read $name: ${e.message}';
+              _presetError = true;
+            });
+            return;
+          }
+          await _restoreRaw(PresetService.rawIdentity(name) ?? '?', area, name);
         },
         onSaveNew: _backupNow,
       ),
