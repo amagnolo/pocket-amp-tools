@@ -296,7 +296,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _confirmAndUpdate() async {
     final bool? go = await showDialog<bool>(
       context: context,
-      builder: (BuildContext context) => _ConfirmDialog(
+      builder: (BuildContext context) => ConfirmUpdateDialog(
         from: _pedal!.identity,
         to: _package!.product,
         rebrand: _pedal!.rebrand,
@@ -991,7 +991,7 @@ class _HomePageState extends State<HomePage> {
       done: p != null,
       children: <Widget>[
         if (p != null) ...<Widget>[
-          _InfoRow('Product', p.productFamily),
+          _InfoRow('Product', reportedFamilyOf(p.product)),
           _InfoRow('Version', p.version),
           _InfoRow('Source', _packageSource ?? ''),
           _InfoRow('SHA-256', '${p.sha256.substring(0, 16)}…'),
@@ -1346,8 +1346,8 @@ class _ResultCard extends StatelessWidget {
   }
 }
 
-class _ConfirmDialog extends StatefulWidget {
-  const _ConfirmDialog({
+class ConfirmUpdateDialog extends StatefulWidget {
+  const ConfirmUpdateDialog({
     required this.from,
     required this.to,
     required this.rebrand,
@@ -1367,10 +1367,10 @@ class _ConfirmDialog extends StatefulWidget {
   final String family;
 
   @override
-  State<_ConfirmDialog> createState() => _ConfirmDialogState();
+  State<ConfirmUpdateDialog> createState() => ConfirmUpdateDialogState();
 }
 
-class _ConfirmDialogState extends State<_ConfirmDialog> {
+class ConfirmUpdateDialogState extends State<ConfirmUpdateDialog> {
   bool _understood = false;
   bool _unknownUnderstood = false;
   bool _rebrandUnderstood = false;
@@ -1400,12 +1400,12 @@ class _ConfirmDialogState extends State<_ConfirmDialog> {
           if (rebrand != null) ...<Widget>[
             const SizedBox(height: 12),
             Text(
-              'This is a $rebrand, sold as a rebranded ${widget.family}. '
-              'There is no $rebrand firmware, so this writes the '
-              '${widget.family} firmware: afterwards the pedal reports itself '
-              'as a ${widget.family} and cannot go back to the $rebrand '
-              'firmware. Only a few units have been updated this way; if '
-              'its hardware differs, the pedal may stop working.',
+              'This is a $rebrand, sold as a rebranded ${widget.family}. This '
+              'writes the ${widget.family} firmware: afterwards the pedal '
+              'reports itself as a ${widget.family}, and this app cannot put '
+              'the $rebrand firmware back. '
+              '${rebrandEvidence[rebrand] ?? 'No unit has been updated this way yet.'} '
+              'If its hardware differs, the pedal may stop working.',
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
             CheckboxListTile(

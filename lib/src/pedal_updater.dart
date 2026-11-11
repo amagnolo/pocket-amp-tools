@@ -315,7 +315,7 @@ class PedalUpdater {
         'The pedal is connected over Bluetooth. Firmware updates need the '
             'USB cable.',
       if (!pkg.isSupportedProduct)
-        'This package is for "${pkg.productFamily}", which this tool does not support.',
+        'This package is for "${reportedFamilyOf(pkg.product)}", which this tool does not support.',
       if (!trustedLoaders.contains(pkg.loaderSha256))
         'The package carries an unknown update loader; refusing to use it.',
       if (pedal.family != pkg.productFamily)
@@ -353,6 +353,14 @@ class PedalUpdater {
       for (final MidiPortRef p in before)
         if (looksLikePedal(p) && p.id != pedal.port.id) p.id,
     };
+    // With two pedals plugged in, port ids can move to the other one while
+    // this one reboots (Windows numbers them by position): refuse.
+    if (otherPedals.isNotEmpty) {
+      throw const UpdateException(
+        'Another pedal is connected. Unplug it and keep only the pedal to '
+        'update.',
+      );
+    }
     OtaLink link = OtaLink(await backend.open(pedal.port));
     try {
       final String? name = await link.identity(timings.identityTimeout);
@@ -380,7 +388,8 @@ class PedalUpdater {
         onProgress(const UpdateProgress(UpdatePhase.waitingLoader, null));
         _log('Waiting for the pedal to come back in update mode...');
         (link, _) = await _waitFor(
-          (String id) => id.startsWith('ota-') && _isSupported(id),
+          // Only this pedal's own update mode.
+          (String id) => id == 'ota-${pedal.identity}',
           timings.waitLoader,
           others,
           otherPedals,
@@ -472,8 +481,9 @@ class PedalUpdater {
       if (sinceLast.elapsed > idle) {
         throw UpdateException(
           phase == UpdatePhase.loader && total < 64 * 1024
-              ? 'The pedal read the package and declined it. This happens '
-                    'when it already runs this version. Nothing was written.'
+              ? 'The pedal stopped while reading the update. It does this '
+                    'when it already runs this version. Its firmware was not '
+                    'changed.'
               : '${phase.name}: the pedal stopped asking for data.',
         );
       }
