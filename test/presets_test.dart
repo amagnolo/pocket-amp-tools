@@ -287,7 +287,25 @@ void main() {
     refused(
       named,
       'P03 MOD.knobs: expected a list of 6 knob values, or '
-      'exactly Speed, ParamA, ParamB, Fb, knob5, knob6',
+      'exactly Speed, MidCut (ParamA), Reso (ParamB), Fb, knob5, knob6',
+    );
+
+    // A version 2 file names Phaser's knobs as they were then.
+    final Map<String, Object?> former = file();
+    block(former, 'MOD')
+      ..['model'] = 'Phaser'
+      ..['knobs'] = <String, int>{
+        'Speed': 1,
+        'ParamA': 2,
+        'ParamB': 3,
+        'Fb': 4,
+        'knob5': 5,
+        'knob6': 6,
+      };
+    final PresetBackup fromFormer = PresetBackup.fromJson(jsonEncode(former));
+    expect(
+      <int>[for (int k = 0; k < 6; k++) fromFormer.knob(2, 2, k)],
+      <int>[1, 2, 3, 4, 5, 6],
     );
 
     final Map<String, Object?> range = file();

@@ -283,6 +283,13 @@ List<String> _knobNames(String block, int model) {
   ];
 }
 
+/// Knob names as version 2 files wrote them, by their current name.
+const Map<String, String> _formerKnobNames = <String, String>{
+  'MidCut (ParamA)': 'ParamA',
+  'Reso (ParamB)': 'ParamB',
+  'T-Mode (Grit)': 'Grit',
+};
+
 /// An EQ record: on/off, position in the chain (0 tail, 1 head) and five
 /// bands in the steps the pedal stores.
 Map<String, Object> _readableEq(Uint8List r) => <String, Object>{
@@ -393,13 +400,18 @@ class _Reader {
       ];
     }
     final Map<String, Object?> named = map(v, '$block.knobs');
-    if (named.length != 6 || !want.every(named.containsKey)) {
+    // Files written before a knob was renamed carry its old name.
+    final List<String> keys = <String>[
+      for (final String k in want)
+        named.containsKey(k) ? k : (_formerKnobNames[k] ?? k),
+    ];
+    if (named.length != 6 || !keys.every(named.containsKey)) {
       _bad(
         '$block.knobs',
         'expected a list of 6 knob values, or exactly ${want.join(', ')}',
       );
     }
-    return <Object?>[for (final String k in want) named[k]];
+    return <Object?>[for (final String k in keys) named[k]];
   }
 
   Uint8List eq(Object? v, String where) {
