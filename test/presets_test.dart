@@ -349,19 +349,11 @@ void main() {
     await s.close();
   });
 
-  test('a backup of the real EQ table opens again', () async {
-    // Records as read from a V1.05 pedal on 2026-11-07: position 0x80 and
-    // bands far outside -6..6.
+  test('a backup keeps an EQ record Save EQ does not take', () async {
+    // A stored record outside what Save EQ takes: position 2, bands outside
+    // -6..6. The file must still reopen with the same bytes.
     final Uint8List a = bank()
-      ..setAll(eqTableAddress + eqHeaderLength, <int>[
-        1,
-        0x80,
-        3,
-        0x78,
-        1,
-        0xBC,
-        0x1E,
-      ]);
+      ..setAll(eqTableAddress + eqHeaderLength, <int>[1, 2, 9, 0, 0, 0xF0, 0]);
     final PresetSession s = PresetSession(FakeBank(a));
     final PresetBackup saved = await readPresetBank(s, 'x');
     await s.close();

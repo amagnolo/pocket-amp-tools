@@ -863,7 +863,7 @@ class _EqCard extends StatelessWidget {
   final void Function(void Function() change) edit;
 
   /// Whether the app can write this preset's EQ record back. Some stored
-  /// records (position 0x80, bands outside -6..6) are not something Save EQ
+  /// records (a position other than head or tail, bands outside -6..6) are not something Save EQ
   /// takes; they are kept as they are unless the user resets them.
   bool get _writable {
     try {
