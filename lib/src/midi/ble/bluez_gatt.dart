@@ -130,7 +130,8 @@ class BluezGattClient implements BleGattClient {
       device: device,
       characteristic: write,
       socket: acquired.socket,
-      writeMtu: _payloadLimit(write.mtu ?? acquired.mtu),
+      // The MTU of the acquired link is the one in use; the property can lag.
+      writeMtu: _payloadLimit(acquired.mtu),
     );
   }
 
@@ -296,12 +297,22 @@ class _BluezSession implements BleGattSession {
       throw const BleGattException(BleGattFailure.disconnected);
     }
     try {
-      await characteristic.writeValue(
-        chunk,
-        type: BlueZGattCharacteristicWriteType.command,
-      );
+      await characteristic
+          .writeValue(chunk, type: BlueZGattCharacteristicWriteType.command)
+          .timeout(const Duration(seconds: 3));
     } on BlueZException catch (error) {
       throw BleGattException(BleGattFailure.disconnected, error.message);
+    } on TimeoutException {
+      throw const BleGattException(BleGattFailure.disconnected, 'no answer');
+    }
+  }
+
+  @override
+  Future<void> disconnect() async {
+    try {
+      await device.disconnect().timeout(const Duration(seconds: 5));
+    } catch (_) {
+      // Already gone, or BlueZ is stuck: closing goes on.
     }
   }
 

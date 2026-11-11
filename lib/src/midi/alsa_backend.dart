@@ -36,6 +36,7 @@ class _Alsa {
     : open = lib.lookupFunction<_OpenC, _OpenD>('snd_rawmidi_open'),
       close = lib.lookupFunction<_HandleC, _HandleD>('snd_rawmidi_close'),
       drain = lib.lookupFunction<_HandleC, _HandleD>('snd_rawmidi_drain'),
+      drop = lib.lookupFunction<_HandleC, _HandleD>('snd_rawmidi_drop'),
       write = lib.lookupFunction<_IoC, _IoD>('snd_rawmidi_write'),
       read = lib.lookupFunction<_IoC, _IoD>('snd_rawmidi_read');
 
@@ -46,6 +47,7 @@ class _Alsa {
   final _OpenD open;
   final _HandleD close;
   final _HandleD drain;
+  final _HandleD drop;
   final _IoD write;
   final _IoD read;
 
@@ -148,6 +150,7 @@ class _AlsaConnection implements MidiConnection {
   Pointer<Void>? _in;
   Pointer<Void>? _out;
   bool _lost = false;
+  bool _stalled = false;
   final StreamController<Uint8List> _messages = StreamController<Uint8List>();
   final SysexSplitter _splitter = SysexSplitter();
   static const int _bufSize = 1024;
@@ -196,6 +199,7 @@ class _AlsaConnection implements MidiConnection {
         final int r = _alsa.write(out, data + written, sysex.length - written);
         if (r == _Alsa.eagain || r == _Alsa.eintr) {
           if (clock.elapsed > const Duration(seconds: 3)) {
+            _stalled = true;
             throw const MidiIoException('MIDI output stalled.');
           }
           await Future<void>.delayed(const Duration(milliseconds: 1));
@@ -230,7 +234,11 @@ class _AlsaConnection implements MidiConnection {
     _in = null;
     _out = null;
     if (o != null) {
-      if (!_lost) {
+      // After a stall, draining (here or inside close) waits up to 10 s for
+      // a pedal that is not reading: drop what is queued instead.
+      if (_lost || _stalled) {
+        _alsa.drop(o);
+      } else {
         _alsa.drain(o);
       }
       _alsa.close(o);

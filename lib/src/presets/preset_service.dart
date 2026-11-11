@@ -124,7 +124,10 @@ class PresetService {
   /// devices are plugged or unplugged.
   Future<MidiConnection> _open(DetectedPedal pedal) async {
     final bool there = (await backend.listPorts()).any(
-      (MidiPortRef p) => p.id == pedal.port.id && p.name == pedal.port.name,
+      (MidiPortRef p) =>
+          p.id == pedal.port.id &&
+          p.name == pedal.port.name &&
+          p.usbId == pedal.port.usbId,
     );
     if (!there) {
       throw const PresetIoException(

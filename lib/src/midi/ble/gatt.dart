@@ -61,6 +61,9 @@ abstract class BleGattSession {
   int get writeMtu;
 
   Future<void> write(List<int> chunk);
+
+  /// Drops the radio link, so the pedal forgets a packet cut off midway.
+  Future<void> disconnect();
   Future<void> close();
 }
 
