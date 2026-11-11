@@ -99,6 +99,21 @@ class PresetBackup {
     return Uint8List.sublistView(eq, at, at + eqRecordLength);
   }
 
+  /// This bank with P01..P79 taken from the raw copy [area] of a pedal on
+  /// older clone firmware (see [oldFirmwareReadable]); P80 and every EQ
+  /// record stay as they are here. Throws [FormatException] when [area] is
+  /// not laid out like that.
+  PresetBackup withOldPresets(Uint8List area) {
+    if (!isOldPresetArea(area)) {
+      throw const FormatException(
+        'This raw copy is not in the layout of PIXIE1 V0.07.',
+      );
+    }
+    final PresetBackup b = copy();
+    b.presets.setRange(0, oldPresetCount * presetSize, area);
+    return b;
+  }
+
   /// A copy whose bytes can be edited without touching this one.
   PresetBackup copy() => PresetBackup(
     identity: identity,
@@ -474,6 +489,30 @@ Future<PresetBackup> readPresetBank(
   } on FormatException catch (e) {
     throw UnknownPresetLayout(e.message, area);
   }
+}
+
+/// PIXIE1 V0.07 keeps presets in the same 92-byte bodies, with no EQ table.
+/// It answers reads at or past this address with filler (the request's
+/// checksum, seven zeros, then an empty preset), so only P01..P79 and the
+/// start of P80 can be read (seen in the raw copies of issue #10).
+const int oldFirmwareReadable = 7296;
+const int oldPresetCount = oldFirmwareReadable ~/ presetSize;
+
+/// Whether [area] holds P01..P79 in the preset layout: each chain lists the
+/// six blocks once and every block is on or off.
+bool isOldPresetArea(Uint8List area) {
+  if (area.length < oldFirmwareReadable) {
+    return false;
+  }
+  for (int id = 0; id < oldPresetCount; id++) {
+    final int at = id * presetSize;
+    final List<int> chain = area.sublist(at + 2, at + 8)..sort();
+    if (!_same(chain, const <int>[0, 1, 2, 3, 4, 5]) ||
+        area.sublist(at + 8, at + 14).any((int b) => b > 1)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /// The pedal answered, but its flash is not laid out like a Pocket AMP's

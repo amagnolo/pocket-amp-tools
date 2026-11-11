@@ -58,6 +58,41 @@ class PresetService {
     }
   }
 
+  /// Restores P01..P79 from the raw copy [area] of [identity], a pedal on
+  /// older clone firmware; P80 and the EQ stay as the pedal has them. Returns
+  /// what was restored and the bank as written.
+  Future<(PresetDiff, PresetBackup)> restoreOld(
+    DetectedPedal pedal,
+    String identity,
+    Uint8List area, {
+    void Function(String step, double fraction)? onProgress,
+  }) async {
+    _checkPedal(pedal);
+    if (familyOf(identity) != pedal.family) {
+      throw PresetIoException(
+        'This raw copy is from a "${familyOf(identity)}", '
+        'not a "${pedal.family}".',
+      );
+    }
+    final PresetSession s = PresetSession(await _open(pedal));
+    try {
+      final PresetBackup now = await readPresetBank(
+        s,
+        pedal.identity,
+        onProgress: (double f) => onProgress?.call('Reading the pedal', f),
+      );
+      final PresetBackup b = now.withOldPresets(area);
+      return (
+        await restorePresetBank(s, b, onProgress: onProgress, expected: now),
+        b,
+      );
+    } on FormatException catch (e) {
+      throw PresetIoException(e.message);
+    } finally {
+      await s.close();
+    }
+  }
+
   /// Opens the pedal for live editing. Close the link before any other
   /// operation: only one can use the port at a time.
   Future<LiveLink> openLive(
@@ -177,8 +212,9 @@ class PresetService {
     return f;
   }
 
-  /// Backups kept in `Documents/Pocket AMP Tools`, newest first. Files
-  /// that do not read as a backup are listed with their error.
+  /// Backups and raw copies kept in `Documents/Pocket AMP Tools`, by name,
+  /// newest first. Files that do not read as a backup are listed with their
+  /// error; a raw copy that can be restored has neither.
   static Future<List<(File, PresetBackup?, String?)>> kept() async {
     final Directory dir = (await _inKeepDir('x')).parent;
     // Backups made while the app was called Pocket AMP Upgrader stay where
@@ -190,7 +226,8 @@ class PresetService {
     // the rest of the list.
     bool usable(File f) {
       try {
-        return f.path.endsWith('.json') &&
+        return (f.path.endsWith('.json') ||
+                rawIdentity(f.uri.pathSegments.last) != null) &&
             // Regular files only (no links, pipes or devices), and small: a
             // backup is about 100 KB.
             FileSystemEntity.typeSync(f.path, followLinks: false) ==
@@ -221,10 +258,23 @@ class PresetService {
     ];
   }
 
+  /// The pedal identity in the name [keepRaw] gives a raw copy, or null.
+  static String? rawIdentity(String name) =>
+      RegExp(r'^raw-(.+)-\d{4}-\d{2}-\d{2}T\d{6}\.bin$')
+          .firstMatch(name)
+          ?.group(1);
+
+  /// A raw copy reads as no backup and no error when its P01..P79 can be
+  /// restored (see [restoreOld]).
   static Future<(File, PresetBackup?, String?)> _read(File f) async {
     try {
       if (await f.length() > 4 << 20) {
         throw const FormatException('too large for a backup');
+      }
+      if (f.path.endsWith('.bin')) {
+        return isOldPresetArea(await f.readAsBytes())
+            ? (f, null, null)
+            : (f, null, 'raw copy in a layout the app does not know');
       }
       return (f, PresetBackup.fromJson(await f.readAsString()), null);
     } catch (e) {

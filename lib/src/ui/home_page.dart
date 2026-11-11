@@ -79,6 +79,10 @@ class _HomePageState extends State<HomePage> {
 
   /// Backup taken right before the last update, offered for restoring after.
   PresetBackup? _preUpdateBackup;
+
+  /// The raw copy taken before updating a pedal on older clone firmware,
+  /// when its P01..P79 can be restored: the pedal's identity and the bytes.
+  (String, Uint8List)? _preUpdateRaw;
   String? _presetTask;
   double? _presetFraction;
   String? _presetMessage;
@@ -333,6 +337,7 @@ class _HomePageState extends State<HomePage> {
       _progress = null;
       _resultMessage = null;
       _preUpdateBackup = null;
+      _preUpdateRaw = null;
     });
     await _stopLive();
     try {
@@ -360,17 +365,26 @@ class _HomePageState extends State<HomePage> {
             _pedal!.identity,
             e.area,
           );
+          final bool old = isOldPresetArea(e.area);
           _addLog(
             'Presets are not in the Pocket AMP layout (${e.message}); '
-            'raw copy kept at ${raw.path}. They will not be restored.',
+            'raw copy kept at ${raw.path}. '
+            '${old ? 'P01-P79 can be restored after the update.' : 'They will not be restored.'}',
           );
           if (!mounted ||
-              !await confirmUpdateWithoutBackup(context, raw.path)) {
+              !await confirmUpdateWithoutBackup(
+                context,
+                raw.path,
+                oldPresets: old,
+              )) {
             _addLog('Update cancelled. Nothing was written.');
             setState(() => _stage = _Stage.idle);
             return;
           }
-          _addLog('Continuing without a restorable preset backup.');
+          _addLog('Continuing without a full preset backup.');
+          if (old) {
+            setState(() => _preUpdateRaw = (_pedal!.identity, e.area));
+          }
         }
       }
       final String after = await _updater.update(
@@ -757,6 +771,52 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  /// Restores P01..P79 from the raw copy [area] of a pedal that was on older
+  /// clone firmware.
+  Future<void> _restoreRaw(String identity, Uint8List area, String from) async {
+    final bool? go = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Restore presets from older firmware?'),
+        content: Text(
+          'P01 to P79 that differ from $from ($identity) will be overwritten '
+          'on the pedal. P80 could not be read on that firmware and its EQ '
+          'did not exist, so P80 and the EQ of every preset stay as they are.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+    if (go != true) {
+      return;
+    }
+    await _runPresetTask('Restoring presets', () async {
+      final (PresetDiff d, PresetBackup b) = await _presets.restoreOld(
+        _pedal!,
+        identity,
+        area,
+        onProgress: (String step, double f) => setState(() {
+          _presetTask = step;
+          _presetFraction = f;
+        }),
+      );
+      if (_workspace.onPedal != null) {
+        _workspace.written(b);
+      }
+      return d.isEmpty
+          ? 'Nothing to write: the pedal already matches.'
+          : 'Written and checked: $d.';
+    });
+  }
+
   // --- view -----------------------------------------------------------------
 
   static const List<(IconData, IconData, String)> _sections =
@@ -820,6 +880,14 @@ class _HomePageState extends State<HomePage> {
           }
         },
         onRestore: (PresetBackup b, String name) => _restore(b, name),
+        onRestoreRaw: (File f) async {
+          final String name = f.uri.pathSegments.last;
+          _restoreRaw(
+            PresetService.rawIdentity(name) ?? '?',
+            await f.readAsBytes(),
+            name,
+          );
+        },
         onSaveNew: _backupNow,
       ),
     };
@@ -995,7 +1063,7 @@ class _HomePageState extends State<HomePage> {
                   onDismiss: () => setState(() => _stage = _Stage.idle),
                   action:
                       _stage == _Stage.success &&
-                          _preUpdateBackup != null &&
+                          (_preUpdateBackup != null || _preUpdateRaw != null) &&
                           _pedal != null &&
                           !_pedal!.inLoader &&
                           !_busy
@@ -1004,10 +1072,16 @@ class _HomePageState extends State<HomePage> {
                           label: const Text(
                             'Restore my presets from before the update',
                           ),
-                          onPressed: () => _restore(
-                            _preUpdateBackup!,
-                            'the backup taken before the update',
-                          ),
+                          onPressed: () => _preUpdateBackup != null
+                              ? _restore(
+                                  _preUpdateBackup!,
+                                  'the backup taken before the update',
+                                )
+                              : _restoreRaw(
+                                  _preUpdateRaw!.$1,
+                                  _preUpdateRaw!.$2,
+                                  'the raw copy taken before the update',
+                                ),
                         )
                       : null,
                 ),
@@ -1584,20 +1658,31 @@ class _LogPanel extends StatelessWidget {
 /// only when the user picks "Update without a backup".
 Future<bool> confirmUpdateWithoutBackup(
   BuildContext context,
-  String rawPath,
-) async {
+  String rawPath, {
+  bool oldPresets = false,
+}) async {
   final bool? go = await showDialog<bool>(
     context: context,
     barrierDismissible: false,
     builder: (BuildContext context) => AlertDialog(
       icon: const Icon(Icons.warning_amber_rounded),
-      title: const Text('Presets cannot be backed up'),
+      title: Text(
+        oldPresets
+            ? 'Presets can only be backed up in part'
+            : 'Presets cannot be backed up',
+      ),
       content: Text(
-        "This pedal's presets are not in the Pocket AMP layout, so they "
-        'cannot be restored on the new firmware. A raw copy was saved to:\n'
-        '$rawPath\n\n'
-        'Nothing has been written to the pedal yet. If you continue, its '
-        'current presets may be lost for good.',
+        oldPresets
+            ? 'This firmware keeps presets in an older layout. A raw copy was '
+                  'saved to:\n$rawPath\n\n'
+                  'After the update, P01 to P79 can be restored from it. P80 '
+                  'cannot be read on this firmware and will be lost.\n\n'
+                  'Nothing has been written to the pedal yet.'
+            : "This pedal's presets are not in the Pocket AMP layout, so they "
+                  'cannot be restored on the new firmware. A raw copy was '
+                  'saved to:\n$rawPath\n\n'
+                  'Nothing has been written to the pedal yet. If you continue, '
+                  'its current presets may be lost for good.',
       ),
       actions: <Widget>[
         TextButton(

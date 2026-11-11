@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -407,6 +408,48 @@ void main() {
       ),
     );
     await s.close();
+  });
+
+  test('a PIXIE1 V0.07 raw copy restores P01..P79 and nothing else', () async {
+    // The raw copy attached to issue #10, read from a PIXIE1 on V0.07.
+    final Uint8List raw = File('test/fixtures/raw-PIXIE1_007.bin')
+        .readAsBytesSync();
+    expect(isOldPresetArea(raw), isTrue);
+    // Past byte 7296 the pedal answered with filler: the request's checksum
+    // (0xDF for the read at 7296) and seven zeros.
+    expect(raw.sublist(7296, 7304), <int>[0xDF, 0, 0, 0, 0, 0, 0, 0]);
+
+    final FakeBank pedal = FakeBank(bank());
+    final PresetSession s = PresetSession(pedal);
+    final PresetBackup now = await readPresetBank(s, 'Pocket AMP_105');
+    final PresetBackup b = now.withOldPresets(raw);
+    expect(b.presets.sublist(0, 7268), raw.sublist(0, 7268));
+    expect(b.preset(79), now.preset(79));
+    expect(b.eq, now.eq);
+    // The old presets go through the same checks and writes as a backup.
+    final PresetDiff d = await restorePresetBank(s, b, expected: now);
+    expect(d.eq, isEmpty);
+    expect(d.presets.every((int id) => id < 79), isTrue);
+    expect(pedal.flash.sublist(0, 7268), raw.sublist(0, 7268));
+    expect(PresetBackup.fromJson(b.toJson()).presets, b.presets);
+    await s.close();
+  });
+
+  test('a raw copy in another layout is refused', () {
+    final Uint8List raw = File('test/fixtures/raw-PIXIE1_007.bin')
+        .readAsBytesSync();
+    final Uint8List odd = Uint8List.fromList(raw)..[40 * 92 + 3] = 7;
+    expect(isOldPresetArea(odd), isFalse);
+    expect(isOldPresetArea(raw.sublist(0, 7000)), isFalse);
+    expect(
+      () => PresetBackup(
+        identity: 'x',
+        created: DateTime(2026),
+        presets: bank().sublist(0, eqTableAddress),
+        eq: bank().sublist(eqTableAddress),
+      ).withOldPresets(odd),
+      throwsFormatException,
+    );
   });
 
   test('a backup keeps an EQ record Save EQ does not take', () async {
