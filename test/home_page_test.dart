@@ -15,7 +15,10 @@ void main() {
       tester.view.physicalSize = const Size(900, 2400);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
-      final FakePedal pedal = FakePedal(image: Uint8List(1024));
+      final FakePedal pedal = FakePedal(
+        image: Uint8List(1024),
+        bank: demoBank(),
+      );
       await tester.pumpWidget(MaterialApp(home: HomePage(backend: pedal)));
       await tester.tap(find.text('Firmware'));
       await tester.pump();
@@ -34,6 +37,11 @@ void main() {
       expect(find.text('1.03'), findsOneWidget);
       expect(find.text('Detect again'), findsOneWidget);
       expect(tester.widget<ButtonStyleButton>(update).onPressed, isNull);
+      // Let the presets read that starts on detection finish.
+      for (int i = 0; i < 400; i++) {
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump(const Duration(milliseconds: 50));
+      }
     },
   );
 
@@ -58,8 +66,7 @@ void main() {
       }
     }
 
-    await settle();
-    await tester.tap(find.text('Read presets from the pedal'));
+    // Presets are read on detection, with no tap.
     for (int i = 0; i < 10 && find.text('P03').evaluate().isEmpty; i++) {
       await settle();
     }

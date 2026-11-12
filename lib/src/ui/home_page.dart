@@ -315,7 +315,16 @@ class _HomePageState extends State<HomePage> {
         _detecting = false;
         _detectedOnce = true;
       });
-      await _startLive();
+      // Read the pedal on its own, unless a read or an opened file is shown.
+      final DetectedPedal? p = _pedal;
+      if (p != null &&
+          !p.inLoader &&
+          _workspace.onPedal == null &&
+          _workspace.draft == null) {
+        await _readPresetsNow(); // restarts the live link when done
+      } else {
+        await _startLive();
+      }
     }
   }
 
