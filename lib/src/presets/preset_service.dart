@@ -259,10 +259,17 @@ class PresetService {
   }
 
   /// The pedal identity in the name [keepRaw] gives a raw copy, or null.
-  static String? rawIdentity(String name) =>
-      RegExp(r'^raw-(.+)-\d{4}-\d{2}-\d{2}T\d{6}\.bin$')
-          .firstMatch(name)
-          ?.group(1);
+  static String? rawIdentity(String name) {
+    final String? id = RegExp(r'^raw-(.+)-\d{4}-\d{2}-\d{2}T\d{6}\.bin$')
+        .firstMatch(name)
+        ?.group(1);
+    final int cut = id?.lastIndexOf('_') ?? -1;
+    // keepRaw wrote spaces as '_' (`DONNER Pocket AMP_008`); the last '_'
+    // still splits the family from the version.
+    return cut < 0
+        ? id
+        : '${id!.substring(0, cut).replaceAll('_', ' ')}${id.substring(cut)}';
+  }
 
   /// A raw copy reads as no backup and no error when its P01..P79 can be
   /// restored (see [restoreOld]).
