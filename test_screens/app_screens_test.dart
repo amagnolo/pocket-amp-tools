@@ -109,7 +109,7 @@ void main() {
       ('presets', const Size(2560, 1600)),
       ('presets-narrow', const Size(840, 1720)),
       ('firmware', const Size(2560, 1600)),
-      ('cabinets', const Size(2560, 1600)),
+      ('library', const Size(2560, 1600)),
       ('backups', const Size(2560, 1600)),
     ]) {
       testWidgets('$name, ${b.name}', (WidgetTester tester) async {
@@ -183,10 +183,18 @@ void main() {
             await tester.pump(const Duration(milliseconds: 300));
             return;
           }
-          if (name == 'cabinets') {
-            await tester.tap(find.text('Cabinets'));
+          if (name == 'library') {
+            final Directory dir = Directory.systemTemp.createTempSync('pa-');
+            addTearDown(() => dir.deleteSync(recursive: true));
+            PathProviderPlatform.instance = _Paths(dir.path);
+            File('${dir.path}/onboarded').writeAsStringSync('1');
+            // The library is read from disk, which runs on real time only.
+            await tester.runAsync(() async {
+              await tester.tap(find.text('Library'));
+              await tester.pump();
+              await Future<void>.delayed(const Duration(milliseconds: 500));
+            });
             await tester.pump();
-            await tester.tap(find.text('Read from pedal'));
             await settle();
             await settle();
             return;
