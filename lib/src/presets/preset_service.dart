@@ -123,44 +123,45 @@ class PresetService {
     String name,
     Uint8List pcm, {
     void Function(double fraction)? onProgress,
-  }) => _sendToSlot(
+  }) => _upload(
     pedal,
     irUploadPackets(slot, name, pcm),
-    slot,
-    name,
     amp: false,
+    slot: slot,
+    want: sanitizeIrName(name),
+    what: 'IR',
     onProgress: onProgress,
   );
 
-  /// Puts the capture [image] (see [parseAmpFile]) in AMP slot [slot] (0..19)
-  /// named [name] and returns the AMP names read back afterwards.
+  /// Puts a "NAM\0" network [image] in AMP slot [slot] (0..19) and returns
+  /// the AMP names read back afterwards.
   Future<List<String>> uploadAmp(
     DetectedPedal pedal,
     int slot,
-    String name,
     Uint8List image, {
     void Function(double fraction)? onProgress,
-  }) => _sendToSlot(
+  }) => _upload(
     pedal,
-    ampUploadPackets(slot, name, image),
-    slot,
-    name,
+    ampUploadPackets(slot, image),
     amp: true,
+    slot: slot,
+    want: namImageName(image),
+    what: 'network',
     onProgress: onProgress,
   );
 
-  Future<List<String>> _sendToSlot(
+  Future<List<String>> _upload(
     DetectedPedal pedal,
-    List<(Uint8List, String)> packets,
-    int slot,
-    String name, {
+    List<(Uint8List, String)> packets, {
     required bool amp,
+    required int slot,
+    required String want,
+    required String what,
     void Function(double fraction)? onProgress,
   }) async {
     _checkPedal(pedal);
-    final String what = amp ? 'an amp capture' : 'an IR';
     if (pedal.port.bluetooth) {
-      throw PresetIoException('Uploading $what needs the USB cable.');
+      throw PresetIoException('Uploading an $what needs the USB cable.');
     }
     final PresetSession s = PresetSession(await _open(pedal));
     try {
@@ -171,15 +172,14 @@ class PresetService {
       }
       final List<String> names = await s.readNames(amp: amp);
       // The pedal overwrites the first character of the first name.
-      final String want = sanitizeIrName(name);
       final String got = names[slot];
       final bool same = slot == 0
           ? got.length == want.length && got.substring(1) == want.substring(1)
           : got == want;
       if (!same) {
         throw PresetIoException(
-          'The pedal answered, but ${amp ? 'AMP' : 'CAB'} slot ${slot + 1} '
-          'reads "$got", not "$want". Send it again.',
+          'The pedal answered, but slot ${slot + 1} reads "$got", not '
+          '"$want". Send the $what again.',
         );
       }
       return names;

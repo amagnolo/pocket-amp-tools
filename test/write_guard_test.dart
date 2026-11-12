@@ -103,8 +103,7 @@ void main() {
       'block repeated in chain': bytes(
         '00 59 22 0E 00 00 04 02 00 00 10 06 00 00 00 00 02 03 04 05 00',
       ),
-      // Byte 8 picks the slot kind: 00 AMP, 01 CAB; nothing else exists.
-      'route 05 store to an unknown kind': bytes(
+      'route 05 write (names, IR)': bytes(
         '00 59 22 09 00 00 05 00 02 00 F0 01 00 00 00 00',
       ),
       'unknown read on route 05': bytes(

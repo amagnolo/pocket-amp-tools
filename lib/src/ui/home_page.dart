@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
@@ -10,8 +11,10 @@ import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 
 import '../firmware_package.dart';
+import '../library/library.dart';
 import '../midi/midi_backend.dart';
 import '../pedal_updater.dart';
 import '../presets/live_link.dart';
@@ -19,12 +22,11 @@ import '../presets/preset_backup.dart';
 import '../presets/preset_service.dart';
 import '../presets/preset_session.dart';
 import '../net/capped_http.dart';
-import '../presets/amp_upload.dart';
-import '../presets/ir_copies.dart';
 import '../presets/ir_upload.dart';
+import '../presets/nam_file.dart';
 import '../telemetry.dart';
 import 'backups_page.dart';
-import 'cabinets_page.dart';
+import 'library_page.dart';
 import 'onboarding.dart';
 import 'presets_page.dart';
 import 'visuals.dart';
@@ -37,10 +39,13 @@ const String officialFirmwareUrl =
 enum _Stage { idle, updating, success, failed }
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, this.backend});
+  const HomePage({super.key, this.backend, this.libraryRoot});
 
   /// Injected in tests; the platform backend otherwise.
   final MidiBackend? backend;
+
+  /// Injected in tests; `Documents/Pocket AMP Tools/Library` otherwise.
+  final Directory? libraryRoot;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -67,8 +72,15 @@ class _HomePageState extends State<HomePage> {
 
   final PresetWorkspace _workspace = PresetWorkspace();
 
-  /// 0 presets, 1 cabinets, 2 firmware, 3 backups.
+  /// 0 presets, 1 library, 2 firmware, 3 backups.
   int _section = 0;
+
+  Library? _library;
+  LibraryKind _libKind = LibraryKind.amp;
+
+  /// Null until read for [_libKind].
+  List<LibraryItem>? _libItems;
+  Map<int, String> _libLinks = <int, String>{};
 
   /// Whether the user wants edits played on the pedal; the link itself is
   /// closed around every other pedal operation.
@@ -103,7 +115,6 @@ class _HomePageState extends State<HomePage> {
     // Detection only sends the identity query, so it is safe to run unasked.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       unawaited(_detect());
-      unawaited(_loadIrCopies());
       if (!await onboardingSeen()) {
         if (mounted) {
           await showOnboarding(context);
@@ -350,7 +361,16 @@ class _HomePageState extends State<HomePage> {
         _detecting = false;
         _detectedOnce = true;
       });
-      await _startLive();
+      // Read the pedal on its own, unless a read or an opened file is shown.
+      final DetectedPedal? p = _pedal;
+      if (p != null &&
+          !p.inLoader &&
+          _workspace.onPedal == null &&
+          _workspace.draft == null) {
+        await _readPresetsNow(); // restarts the live link when done
+      } else {
+        await _startLive();
+      }
     }
   }
 
@@ -686,110 +706,210 @@ class _HomePageState extends State<HomePage> {
     return 'Read the names of the 20 AMP and 20 CAB slots.';
   });
 
-  /// Copies of what this app sent, by slot: the name sent. CAB and AMP.
-  Map<int, String> _irCopies = <int, String>{};
-  Map<int, String> _ampCopies = <int, String>{};
+  // --- library --------------------------------------------------------------
 
-  /// The Cabinets section shows the AMP slots instead of the CAB slots.
-  bool _ampSlots = false;
+  Future<Library> _lib() async => _library ??= Library(
+    widget.libraryRoot ??
+        Directory(
+          '${(await getApplicationDocumentsDirectory()).path}'
+          '${Platform.pathSeparator}Pocket AMP Tools'
+          '${Platform.pathSeparator}Library',
+        ),
+  );
 
-  Future<void> _loadIrCopies() async {
-    Future<Map<int, String>> names(bool amp) async => <int, String>{
-      for (final MapEntry<int, (String, File)> e
-          in (await (await IrCopies.standard(amp: amp)).list()).entries)
-        e.key: e.value.$1,
-    };
+  Future<void> _loadLibrary() async {
+    final LibraryKind k = _libKind;
     try {
-      final Map<int, String> cab = await names(false);
-      final Map<int, String> amp = await names(true);
+      final Library lib = await _lib();
+      final List<LibraryItem> items = await lib.list(k);
+      final Map<int, String> links = await lib.links(k);
+      if (k == _libKind) {
+        setState(() {
+          _libItems = items;
+          _libLinks = links;
+        });
+      }
+    } on Object catch (e) {
+      if (e is! FileSystemException && e is! MissingPluginException) {
+        rethrow;
+      }
       setState(() {
-        _irCopies = cab;
-        _ampCopies = amp;
+        _libItems = <LibraryItem>[];
+        _presetMessage = 'The library folder cannot be read: $e';
+        _presetError = true;
       });
-    } catch (_) {
-      // No documents folder (tests, sandbox): no copies to offer.
     }
   }
 
-  /// Sends a file to [slot] of the CAB slots, or with [amp] the AMP slots:
-  /// one the user picks, or the copy kept from an earlier upload ([restore]).
-  Future<void> _replaceIr(
-    int slot, {
-    bool amp = false,
-    bool restore = false,
-  }) async {
-    final String ext = amp ? 'bin' : 'wav';
-    final XFile? picked;
-    if (restore) {
-      final (String, File)? kept = (await (await IrCopies.standard(amp: amp))
-          .list())[slot];
-      picked = kept == null
-          ? null
-          : XFile(kept.$2.path, name: '${kept.$1}.$ext');
-    } else {
-      picked = await openFile(
-        acceptedTypeGroups: amp
-            // Captures come as .am3data, .am3, or the converter's .bin.
-            ? const <XTypeGroup>[XTypeGroup(label: 'Amp capture')]
-            : const <XTypeGroup>[
-                XTypeGroup(
-                  label: 'Impulse response',
-                  extensions: <String>['wav'],
-                ),
-              ],
-      );
-    }
-    if (picked == null) {
+  void _setLibKind(LibraryKind k) {
+    setState(() {
+      _libKind = k;
+      _libItems = null;
+      _libLinks = <int, String>{};
+      _presetMessage = null;
+    });
+    _loadLibrary();
+  }
+
+  void _libError(Object e) => setState(() {
+    _presetMessage = '$e';
+    _presetError = true;
+  });
+
+  Future<void> _importToLibrary() async {
+    final LibraryKind k = _libKind;
+    final List<XFile> files = await openFiles(
+      acceptedTypeGroups: <XTypeGroup>[
+        if (k == LibraryKind.amp)
+          const XTypeGroup(
+            label: 'NAM capture (A2)',
+            extensions: <String>['nam'],
+          )
+        else
+          const XTypeGroup(
+            label: 'Impulse response',
+            extensions: <String>['wav'],
+          ),
+      ],
+    );
+    if (files.isEmpty) {
       return;
     }
-    final XFile file = picked;
-    final Uint8List raw;
-    final Uint8List payload;
-    try {
-      if (await file.length() > 1 << 20) {
-        throw const InvalidIrFile('the file is too large for a slot');
+    final Library lib = await _lib();
+    int added = 0;
+    final List<String> failed = <String>[];
+    for (final XFile f in files) {
+      try {
+        // An A2 file with every size is a few hundred KB; an IR, 6 KB.
+        if (await f.length() > 16 << 20) {
+          throw const LibraryException('the file is too large');
+        }
+        await lib.import(k, f.name, await f.readAsBytes());
+        added++;
+      } on Object catch (e) {
+        if (e is! InvalidNamFile &&
+            e is! InvalidIrFile &&
+            e is! LibraryException &&
+            e is! FileSystemException) {
+          rethrow;
+        }
+        failed.add('${f.name}: $e');
       }
-      raw = await file.readAsBytes();
-      payload = amp ? parseAmpFile(raw) : parseIrWav(raw);
+    }
+    setState(() {
+      _presetMessage = <String>[
+        if (added > 0)
+          'Added $added file${added == 1 ? '' : 's'} to the library.',
+        ...failed,
+      ].join('\n');
+      _presetError = failed.isNotEmpty;
+    });
+    await _loadLibrary();
+  }
+
+  Future<void> _renameInLibrary(LibraryItem it) async {
+    final String? name = await askRename(context, it.name);
+    if (name == null) {
+      return;
+    }
+    try {
+      await (await _lib()).rename(it, name);
     } on Object catch (e) {
-      if (e is! InvalidIrFile && e is! FileSystemException) {
+      if (e is! LibraryException && e is! FileSystemException) {
         rethrow;
       }
-      if (!mounted) {
-        return;
+      _libError(e);
+    }
+    await _loadLibrary();
+  }
+
+  Future<void> _deleteFromLibrary(LibraryItem it) async {
+    if (!await confirmDelete(context, it.name)) {
+      return;
+    }
+    try {
+      await (await _lib()).delete(it);
+    } on FileSystemException catch (e) {
+      _libError(e);
+    }
+    await _loadLibrary();
+  }
+
+  List<String>? _namesOf(LibraryKind k) =>
+      k == LibraryKind.amp ? _workspace.ampNames : _workspace.cabNames;
+
+  Future<void> _sendItem(LibraryItem it) async {
+    final List<String>? names = _namesOf(it.kind);
+    if (names == null) {
+      return;
+    }
+    final int? slot = await chooseSlot(
+      context,
+      it.kind == LibraryKind.amp ? 'AMP' : 'CAB',
+      it.name,
+      names,
+      _libLinks,
+    );
+    if (slot != null) {
+      await _sendToSlot(it, slot);
+    }
+  }
+
+  Future<void> _loadSlot(int slot) async {
+    final List<LibraryItem>? items = _libItems;
+    if (items == null || items.isEmpty) {
+      return;
+    }
+    final LibraryItem? it = await chooseItem(
+      context,
+      _libKind == LibraryKind.amp ? 'AMP' : 'CAB',
+      slot,
+      items,
+    );
+    if (it != null) {
+      await _sendToSlot(it, slot);
+    }
+  }
+
+  Future<void> _sendToSlot(LibraryItem it, int slot) async {
+    final bool amp = it.kind == LibraryKind.amp;
+    final Uint8List bytes;
+    try {
+      bytes = await it.file.readAsBytes();
+      Library.check(it.kind, bytes); // the file may have changed on disk
+    } on Object catch (e) {
+      if (e is! InvalidNamFile &&
+          e is! InvalidIrFile &&
+          e is! FileSystemException) {
+        rethrow;
       }
-      setState(() {
-        _presetMessage = '${file.name}: $e';
-        _presetError = true;
-      });
+      _libError('${it.name}: $e');
       return;
     }
     if (!mounted) {
       return;
     }
-    final List<String>? current = amp
-        ? _workspace.ampNames
-        : _workspace.cabNames;
-    final String? name = await confirmIrUpload(
+    final String? name = await confirmSlotUpload(
       context,
       slot,
-      current?[slot] ?? 'slot ${slot + 1}',
-      file.name.replaceAll(RegExp(r'\.[^.]*$'), ''),
-      amp: amp,
+      _namesOf(it.kind)?[slot] ?? 'slot ${slot + 1}',
+      it.name,
+      block: amp ? 'AMP' : 'CAB',
+      what: amp ? 'models' : 'IRs',
+      plays: amp ? 'model' : 'IR',
     );
     if (name == null) {
       return;
     }
     await _runPresetTask(
-      amp ? 'Sending the capture' : 'Sending the IR',
+      amp ? 'Sending the model' : 'Sending the IR',
       () async {
         void progress(double f) => setState(() => _presetFraction = f);
         if (amp) {
           _workspace.ampNames = await _presets.uploadAmp(
             _pedal!,
             slot,
-            name,
-            payload,
+            namFileToImage(utf8.decode(bytes), name),
             onProgress: progress,
           );
         } else {
@@ -797,26 +917,16 @@ class _HomePageState extends State<HomePage> {
             _pedal!,
             slot,
             name,
-            payload,
+            parseIrWav(bytes),
             onProgress: progress,
           );
         }
-        // The pedal cannot give it back: this copy is the only one.
-        String kept;
-        try {
-          final File f = await (await IrCopies.standard(amp: amp))
-              .keep(slot, name, raw);
-          _addLog('Copy kept at ${f.path}');
-          kept = ' A copy is kept to restore it later.';
-        } catch (e) {
-          _addLog('Could not keep a copy: $e');
-          kept = ' No copy could be kept ($e).';
-        }
-        await _loadIrCopies();
-        return '${amp ? 'Capture stored in AMP' : 'IR stored in CAB'} slot '
-            '${slot + 1} as "$name".$kept';
+        await (await _lib()).link(it.kind, slot, it);
+        return '"${it.name}" stored in ${amp ? 'AMP' : 'CAB'} slot ${slot + 1} '
+            'as "$name".';
       },
     );
+    await _loadLibrary();
   }
 
   Future<void> _editBackup(PresetBackup b, String name) async {
@@ -949,7 +1059,7 @@ class _HomePageState extends State<HomePage> {
   static const List<(IconData, IconData, String)> _sections =
       <(IconData, IconData, String)>[
         (Icons.tune_outlined, Icons.tune, 'Presets'),
-        (Icons.speaker_outlined, Icons.speaker, 'Cabinets'),
+        (Icons.library_music_outlined, Icons.library_music, 'Library'),
         (Icons.system_update_alt_outlined, Icons.system_update_alt, 'Firmware'),
         (Icons.inventory_2_outlined, Icons.inventory_2, 'Backups'),
       ];
@@ -958,6 +1068,9 @@ class _HomePageState extends State<HomePage> {
     // The update screen stays up until the pedal is written.
     if (_stage != _Stage.updating) {
       setState(() => _section = i);
+      if (i == 1 && _libItems == null) {
+        _loadLibrary();
+      }
     }
   }
 
@@ -981,22 +1094,25 @@ class _HomePageState extends State<HomePage> {
         liveOn: _workspace.live != null,
         onLive: _setLive,
       ),
-      1 => CabinetsPage(
-        names: _ampSlots ? _workspace.ampNames : _workspace.cabNames,
-        amp: _ampSlots,
-        onKind: (bool amp) => setState(() => _ampSlots = amp),
+      1 => LibraryPage(
+        kind: _libKind,
+        onKind: _setLibKind,
+        items: _libItems,
+        links: _libLinks,
+        names: _namesOf(_libKind),
         canUsePedal: _pedal != null && !_pedal!.inLoader,
-        irNeedsUsb: _pedal?.port.bluetooth ?? false,
+        needsUsb: _pedal?.port.bluetooth ?? false,
         busy: _busy,
         task: _presetTask,
         fraction: _presetFraction,
         message: _presetMessage,
         messageIsError: _presetError,
         onReadNames: _readNames,
-        onReplace: (int slot) => _replaceIr(slot, amp: _ampSlots),
-        copies: _ampSlots ? _ampCopies : _irCopies,
-        onRestoreCopy: (int slot) =>
-            _replaceIr(slot, amp: _ampSlots, restore: true),
+        onImport: _importToLibrary,
+        onRename: _renameInLibrary,
+        onDelete: _deleteFromLibrary,
+        onSendItem: _sendItem,
+        onLoadSlot: _loadSlot,
       ),
       2 => _firmwarePage(theme),
       _ => BackupsPage(
@@ -1087,6 +1203,8 @@ class _HomePageState extends State<HomePage> {
         ? 'Connect it by USB (or pair it by Bluetooth) and close other MIDI apps'
         : p.port.bluetooth
         ? 'Bluetooth · presets only'
+        : p.presetsOnly
+        ? 'Firmware ${p.version} · presets only · ${p.port.name}'
         : p.inLoader
         ? 'In update mode · ${p.port.name}'
         : 'Firmware ${p.version} · ${p.port.name}';

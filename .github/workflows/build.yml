@@ -2,7 +2,7 @@ name: build
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
     tags: ['v*']
   pull_request:
   workflow_dispatch:
@@ -29,6 +29,8 @@ jobs:
 
   build:
     needs: test
+    # PRs only run the tests; the builds run after the merge.
+    if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:

@@ -1,143 +1,98 @@
 // SPDX-License-Identifier: GPL-3.0-only
+//
+// Uploading a "NAM\0" network image to one of the 20 AMP slots. Same route
+// and steps as the IR upload (ir_upload.dart); what changes is read from the
+// firmware: the first chunk's magic is not "CAB\0", so the buffer is the AMP
+// one, the apply value is 1 (AMP) and the slot write has kind 0 (AMP).
+//
+// The image carries its own name (bytes 4..17), so there is no naming step.
 
 import 'dart:typed_data';
 
 import 'ir_upload.dart';
 import 'mefcs.dart';
 
-/// Amp captures for the 20 AMP slots, in the two formats firmware V1.05
-/// takes (probe-pocket-amp `PROTOCOLO_IR.md`, pocket-amp-firmware
-/// `reconstrucao/UPLOAD.md`):
-///
-/// - `AM3\0`: what M-EFCS sends, 6204 B (20 B header and GRU weights) plus the
-///   `LMT\0` block M-EFCS computes with its own DLL, 6272 B in all. A file
-///   without that block is refused: the app cannot compute it yet.
-/// - `NAM\0`: the pedal's own fixed network (3 channels, 23 layers), 7548 B,
-///   or 7836 B with the optional `BEND` block. Not the community `.nam`.
-///
-/// Both are sent like an IR, through the same 12 KiB buffer, in 1015-byte
-/// chunks: the file as it is, "apply", the file again with the slot name in
-/// bytes 4..17, and "store", which writes the slot in flash.
+const int namImageLength = 7548;
+
+/// With the optional "BEND" tail (initial ring state).
+const int namBendImageLength = 7836;
 const int ampSlotCount = 20;
-const int am3Length = 6204;
-const int am3WithLmtLength = am3Length + 4 + 16 * 4;
-const int namLength = 7548;
-const int namWithBendLength = 7836;
+const List<int> namHeaderMagic = <int>[0x4E, 0x41, 0x4D, 0x00]; // "NAM\0"
 
-/// Every image length the guard lets through.
-const Set<int> ampImageLengths = <int>{
-  am3WithLmtLength,
-  namLength,
-  namWithBendLength,
-};
-
-const List<int> am3Magic = <int>[0x41, 0x4D, 0x33, 0x00]; // "AM3\0"
-const List<int> namMagic = <int>[0x4E, 0x41, 0x4D, 0x00]; // "NAM\0"
-const List<int> _lmtMagic = <int>[0x4C, 0x4D, 0x54, 0x00]; // "LMT\0"
-const List<int> _bendMagic = <int>[0x42, 0x45, 0x4E, 0x44]; // "BEND"
-
-/// Checks a capture file and returns it as the image to send.
-Uint8List parseAmpFile(List<int> bytes) {
-  final Uint8List b = Uint8List.fromList(bytes);
-  bool at(int o, List<int> magic) =>
-      b.length >= o + magic.length &&
-      Iterable<int>.generate(magic.length)
-          .every((int i) => b[o + i] == magic[i]);
-  if (at(0, am3Magic)) {
-    if (b.length == am3Length) {
-      throw const InvalidIrFile(
-        'This .am3 has no LMT block. M-EFCS adds it when it sends a capture, '
-        'and this app cannot compute it yet: send it once with M-EFCS, or '
-        'use a file that already has it.',
-      );
-    }
-    if (b.length != am3WithLmtLength || !at(am3Length, _lmtMagic)) {
-      throw InvalidIrFile(
-        'An AM3 capture has $am3WithLmtLength bytes with its LMT block; this '
-        'one has ${b.length}.',
-      );
-    }
-    _checkFloats(b, 20, am3Length);
-    return b;
-  }
-  if (at(0, namMagic)) {
-    if (b.length != namLength && b.length != namWithBendLength) {
-      throw InvalidIrFile(
-        'A pedal NAM model has $namLength or $namWithBendLength bytes; this '
-        'one has ${b.length}. A .nam from Tone3000 or the NAM project is a '
-        'different network and must be converted first.',
-      );
-    }
-    if (b.length == namWithBendLength && !at(7544, _bendMagic)) {
-      throw const InvalidIrFile(
-        'The model is 7836 bytes but has no BEND block.',
-      );
-    }
-    // The firmware refuses inf and NaN in the weights (UPLOAD.md §3).
-    _checkFloats(b, 60, 7544);
-    return b;
-  }
-  if (b.isNotEmpty && b[0] == 0x7B) {
-    throw const InvalidIrFile(
-      'This is a .nam from the NAM project (Tone3000), a different network '
-      'from the pedal\'s. Convert it to the pedal format first.',
-    );
-  }
-  throw const InvalidIrFile(
-    'Not an amp capture the pedal takes (AM3 with LMT, or the pedal\'s NAM).',
-  );
-}
-
-void _checkFloats(Uint8List b, int from, int to) {
-  final ByteData d = ByteData.sublistView(b);
-  for (int o = from; o + 4 <= to; o += 4) {
-    if (!d.getFloat32(o, Endian.little).isFinite) {
-      throw InvalidIrFile('The weights hold an infinite or NaN value at $o.');
-    }
-  }
-}
-
-/// [image] with [name] in bytes 4..17, padded with NULs.
-Uint8List withAmpName(Uint8List image, String name) {
-  final List<int> n = sanitizeIrName(name).codeUnits;
-  return Uint8List.fromList(image)
-    ..setAll(4, <int>[for (int i = 0; i < irNameMaxLength + 1; i++) 0])
-    ..setAll(4, n);
-}
-
-/// The 1015-byte chunks of an image, by offset.
+/// Offset -> size of the chunks for an image of [length] bytes.
 Map<int, int> ampChunkGrid(int length) => <int, int>{
   for (int at = 0; at < length; at += irChunkLength)
     at: length - at < irChunkLength ? length - at : irChunkLength,
 };
 
-/// The packets that put [image] in AMP slot [slot] (0..19) as [name], in
-/// order; the last one writes flash.
-List<(Uint8List, String)> ampUploadPackets(
-  int slot,
-  String name,
-  Uint8List image,
-) {
-  if (slot < 0 ||
-      slot >= ampSlotCount ||
-      !ampImageLengths.contains(image.length)) {
-    throw ArgumentError('invalid amp upload');
+/// "NAM\0", a printable name ending in NUL padded to byte 17, then the 100
+/// the loader forces.
+bool isNamHeader(List<int> d) {
+  if (d.length < 22 || !_starts(d, namHeaderMagic) || d[18] != 100) {
+    return false;
   }
-  final Uint8List named = withAmpName(image, name);
-  List<(Uint8List, String)> send(Uint8List img, String what) =>
-      <(Uint8List, String)>[
-        for (final MapEntry<int, int> e in ampChunkGrid(img.length).entries)
-          (irBufferPacket(e.key, img.sublist(e.key, e.key + e.value)), what),
-      ];
+  final List<int> name = d.sublist(4, 18);
+  final int end = name.indexOf(0);
+  return end > 0 &&
+      name.sublist(0, end).every((int c) => c >= 0x20 && c < 0x7F) &&
+      name.sublist(end).every((int c) => c == 0);
+}
+
+/// The name stored in a valid image.
+String namImageName(List<int> image) {
+  final List<int> name = image.sublist(4, 18);
+  return String.fromCharCodes(name.sublist(0, name.indexOf(0)));
+}
+
+class InvalidAmpImage implements Exception {
+  const InvalidAmpImage(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
+/// Checks what the firmware checks before it stores the image: size, header,
+/// and no inf or NaN among the 1871 floats from byte 60 to 7544.
+void checkNamImage(List<int> image) {
+  if (image.length != namImageLength && image.length != namBendImageLength) {
+    throw InvalidAmpImage(
+      'A network image has $namImageLength or $namBendImageLength bytes, '
+      'not ${image.length}.',
+    );
+  }
+  if (!isNamHeader(image)) {
+    throw const InvalidAmpImage('Not a "NAM" network image.');
+  }
+  if (image.length == namBendImageLength &&
+      !_starts(image.sublist(7544), const <int>[0x42, 0x45, 0x4E, 0x44])) {
+    throw const InvalidAmpImage('A 7836-byte image must end with "BEND".');
+  }
+  final ByteData f = ByteData.sublistView(Uint8List.fromList(image));
+  for (int at = 60; at < 7544; at += 4) {
+    if (!f.getFloat32(at, Endian.little).isFinite) {
+      throw const InvalidAmpImage('The image has an inf or NaN weight.');
+    }
+  }
+}
+
+/// The packets that put [image] in AMP slot [slot] (0..19), in order.
+List<(Uint8List, String)> ampUploadPackets(int slot, List<int> image) {
+  if (slot < 0 || slot >= ampSlotCount) {
+    throw ArgumentError('invalid AMP slot $slot');
+  }
+  checkNamImage(image);
   return <(Uint8List, String)>[
-    ...send(image, 'sending the capture'),
-    (ampApplyPacket(), 'applying the capture'),
-    ...send(named, 'naming the capture'),
-    (ampSaveToSlotPacket(slot), 'storing the capture in AMP slot ${slot + 1}'),
+    for (final MapEntry<int, int> e in ampChunkGrid(image.length).entries)
+      (
+        irBufferPacket(e.key, image.sublist(e.key, e.key + e.value)),
+        'sending the network',
+      ),
+    (ampApplyPacket(), 'applying the network'),
+    (ampSaveToSlotPacket(slot), 'storing the network in slot ${slot + 1}'),
   ];
 }
 
-/// Plays the capture in the buffer. Stores nothing.
+/// Plays the network in the buffer. Stores nothing.
 Uint8List ampApplyPacket() => _sealed(<int>[
   0x00, 0x59, 0x22, 0x09, 0x00, 0x00, 0x05, //
   0x00, 0x00, 0x00, 0xA0, 0x01, 0x00, 0x00, 0x01, 0x00,
@@ -152,6 +107,15 @@ Uint8List ampSaveToSlotPacket(int slot) {
     0x00, 0x59, 0x22, 0x09, 0x00, 0x00, 0x05, //
     slot, 0x00, 0x00, 0xF0, 0x01, 0x00, 0x00, 0x00, 0x00,
   ]);
+}
+
+bool _starts(List<int> d, List<int> prefix) {
+  for (int i = 0; i < prefix.length; i++) {
+    if (d[i] != prefix[i]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 Uint8List _sealed(List<int> p) {

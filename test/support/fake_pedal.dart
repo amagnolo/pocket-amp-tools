@@ -104,11 +104,14 @@ class FakePedal implements MidiBackend {
   ];
 
   /// The IR buffer, and what was copied to each CAB slot.
-  final Uint8List irBuffer = Uint8List(8192);
+  final Uint8List irBuffer = Uint8List(6164);
   final Map<int, Uint8List> irSlots = <int, Uint8List>{};
-
-  /// What was copied to each AMP slot (the whole 8 KiB buffer).
+  final Uint8List ampBuffer = Uint8List(7836);
   final Map<int, Uint8List> ampSlots = <int, Uint8List>{};
+
+  /// Which buffer the chunks go to, picked by the magic of chunk 0, as the
+  /// firmware does ("CAB\0" for the IR one).
+  bool chunksToAmp = false;
 
   /// Live writes received, as short labels.
   final List<String> liveWrites = <String>[];
@@ -358,23 +361,23 @@ List<int> bankReply(FakePedal pedal, Uint8List packet) {
   if (packet[6] == 0x05) {
     if (packet.length == 16 && packet[10] == 0xF0) {
       final int slot = packet[7];
-      final String name = String.fromCharCodes(
-        pedal.irBuffer.sublist(4, 18).takeWhile((int c) => c != 0),
+      final bool amp = packet[8] == 0;
+      final Uint8List buffer = amp ? pedal.ampBuffer : pedal.irBuffer;
+      (amp ? pedal.ampSlots : pedal.irSlots)[slot] = Uint8List.fromList(buffer);
+      final List<int> name = buffer.sublist(4, 18);
+      (amp ? pedal.ampNames : pedal.cabNames)[slot] = String.fromCharCodes(
+        name.takeWhile((int c) => c != 0),
       );
-      // Byte 8: 01 stores a CAB, 00 an AMP.
-      if (packet[8] == 0x01) {
-        pedal.irSlots[slot] = Uint8List.fromList(
-          pedal.irBuffer.sublist(0, 6164),
-        );
-        pedal.cabNames[slot] = name;
-      } else {
-        pedal.ampSlots[slot] = Uint8List.fromList(pedal.irBuffer);
-        pedal.ampNames[slot] = name;
-      }
     } else if (packet.length != 16) {
       final int at = packet[7] | (packet[8] << 8);
       final int n = packet[11] | (packet[12] << 8);
-      pedal.irBuffer.setAll(at, packet.sublist(14, 14 + n));
+      if (at == 0) {
+        pedal.chunksToAmp = packet[14] != 0x43; // not "CAB\0"
+      }
+      (pedal.chunksToAmp ? pedal.ampBuffer : pedal.irBuffer).setAll(
+        at,
+        packet.sublist(14, 14 + n),
+      );
     }
     pedal.liveWrites.add('ir ${packet.length}');
     return ack;

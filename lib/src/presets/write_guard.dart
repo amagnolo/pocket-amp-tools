@@ -157,16 +157,14 @@ String? _write(List<int> p) {
   return 'unknown write';
 }
 
-/// Route 05: only the IR and amp capture uploads, in the shapes traced from
-/// the official app (the AMP ones in PROTOCOLO_IR.md, "Captura de AMP").
+/// Route 05: only the IR upload, in the shapes traced from the official app,
+/// and the AMP network upload, which differs in the apply value and slot kind.
 String? _irWrite(List<int> p) {
   if (p.length == 16 && p[3] == 0x09) {
-    // Apply the buffer: 02 for a CAB, 01 for an AMP.
     if (_is(p, 7, const <int>[0, 0, 0, 0xA0, 0x01, 0, 0]) &&
         (p[14] == 0x02 || p[14] == 0x01)) {
-      return null;
+      return null; // apply the buffer (2 CAB, 1 AMP)
     }
-    // Store the buffer in a slot: byte 8 is 01 for CAB, 00 for AMP.
     return p[7] < irSlotCount &&
             (p[8] == 0x01 || p[8] == 0x00) &&
             _is(p, 9, const <int>[0, 0xF0, 0x01, 0, 0, 0x00])
@@ -179,33 +177,21 @@ String? _irWrite(List<int> p) {
     return 'bad IR buffer write';
   }
   final List<int> data = p.sublist(14, 14 + n);
-  if (offset == 0 && !_isIrHeader(data) && !_isAmpHeader(data)) {
-    return 'buffer write without a valid CAB, AM3 or NAM header';
+  if (offset == 0 && isNamHeader(data)) {
+    return n == irChunkLength ? null : 'network chunk off the grid';
+  }
+  if (offset == 0 && !_isIrHeader(data)) {
+    return 'IR buffer without a valid CAB header';
   }
   if (irChunkGrid[offset] == n || (offset == 0 && n == irHeaderLength)) {
     return null;
   }
-  // An amp capture: whole 1015-byte chunks, the last one ending the image.
-  if (offset % irChunkLength == 0 &&
-      (n == irChunkLength || ampImageLengths.contains(offset + n)) &&
-      offset + n <= namWithBendLength) {
+  // The other network chunks: the grid of a 7548- or 7836-byte image.
+  if (ampChunkGrid(namImageLength)[offset] == n ||
+      ampChunkGrid(namBendImageLength)[offset] == n) {
     return null;
   }
   return 'IR chunk off the grid';
-}
-
-/// "AM3\0" or "NAM\0", then a printable name ending in NUL and padded with
-/// NULs to byte 17.
-bool _isAmpHeader(List<int> d) {
-  if (d.length < irHeaderLength ||
-      !(_is(d, 0, am3Magic) || _is(d, 0, namMagic))) {
-    return false;
-  }
-  final List<int> name = d.sublist(4, 18);
-  final int end = name.indexOf(0);
-  return end >= 0 &&
-      name.sublist(0, end).every((int c) => c >= 0x20 && c < 0x7F) &&
-      name.sublist(end).every((int c) => c == 0);
 }
 
 /// The ranges the firmware itself keeps in a preset body: volume and knobs
