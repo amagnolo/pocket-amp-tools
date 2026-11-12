@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../library/library.dart';
 import '../presets/ir_upload.dart';
+import 'visuals.dart';
 
 /// The user's amp captures and IRs kept on the computer, next to the 20
 /// pedal slots of the same kind, with a way to put a file in a slot.
@@ -94,12 +95,12 @@ class LibraryPage extends StatelessWidget {
               segments: const <ButtonSegment<LibraryKind>>[
                 ButtonSegment<LibraryKind>(
                   value: LibraryKind.amp,
-                  icon: Icon(Icons.graphic_eq),
+                  icon: BlockIcon('AMP', size: 18),
                   label: Text('Amps'),
                 ),
                 ButtonSegment<LibraryKind>(
                   value: LibraryKind.cab,
-                  icon: Icon(Icons.speaker),
+                  icon: BlockIcon('CAB', size: 18),
                   label: Text('Cabinets'),
                 ),
               ],
@@ -185,20 +186,14 @@ class LibraryPage extends StatelessWidget {
             child: Center(child: CircularProgressIndicator()),
           )
         else if (list.isEmpty)
-          Card.outlined(
-            margin: EdgeInsets.zero,
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                amp
-                    ? 'No captures yet. Add the .nam files you downloaded; '
-                          'they are copied into the library, so the originals '
-                          'can go.'
-                    : 'No IRs yet. Add your WAV files; they are copied into '
-                          'the library, so the originals can go.',
-                textAlign: TextAlign.center,
-              ),
-            ),
+          EmptyState(
+            icon: Icons.library_music_outlined,
+            title: amp ? 'No captures yet' : 'No IRs yet',
+            message: amp
+                ? 'Add the .nam files you downloaded; they are copied into '
+                      'the library, so the originals can go.'
+                : 'Add your WAV files; they are copied into the library, so '
+                      'the originals can go.',
           )
         else
           Card.outlined(
@@ -209,7 +204,7 @@ class LibraryPage extends StatelessWidget {
                 for (final (int i, LibraryItem it) in list.indexed) ...<Widget>[
                   if (i > 0) const Divider(height: 1),
                   ListTile(
-                    leading: Icon(amp ? Icons.graphic_eq : Icons.speaker),
+                    leading: IconBadge.block(amp ? 'AMP' : 'CAB'),
                     title: Text(it.name, overflow: TextOverflow.ellipsis),
                     subtitle: _usedIn(it),
                     trailing: Row(
@@ -274,17 +269,12 @@ class LibraryPage extends StatelessWidget {
           ),
         ),
         if (n == null)
-          Card.outlined(
-            margin: EdgeInsets.zero,
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                canUsePedal
-                    ? 'Read the slot names from the pedal to start.'
-                    : 'Connect the pedal to see its $block slots.',
-                textAlign: TextAlign.center,
-              ),
-            ),
+          EmptyState(
+            icon: Icons.speaker_group_outlined,
+            title: amp ? 'AMP slots' : 'CAB slots',
+            message: canUsePedal
+                ? 'Read the slot names from the pedal to start.'
+                : 'Connect the pedal to see its $block slots.',
           )
         else
           Card.outlined(
@@ -295,12 +285,15 @@ class LibraryPage extends StatelessWidget {
                 for (int i = 0; i < n.length; i++) ...<Widget>[
                   if (i > 0) const Divider(height: 1),
                   ListTile(
-                    leading: SizedBox(
-                      width: 28,
+                    leading: CircleAvatar(
+                      radius: 18,
+                      backgroundColor: theme.colorScheme.secondaryContainer,
+                      foregroundColor: theme.colorScheme.onSecondaryContainer,
                       child: Text(
                         '${i + 1}',
-                        style: theme.textTheme.labelLarge,
-                        textAlign: TextAlign.end,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: theme.colorScheme.onSecondaryContainer,
+                        ),
                       ),
                     ),
                     title: Text(slotName(n, i)),

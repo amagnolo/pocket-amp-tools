@@ -24,9 +24,12 @@ import '../presets/preset_session.dart';
 import '../net/capped_http.dart';
 import '../presets/ir_upload.dart';
 import '../presets/nam_file.dart';
+import '../telemetry.dart';
 import 'backups_page.dart';
 import 'library_page.dart';
+import 'onboarding.dart';
 import 'presets_page.dart';
+import 'visuals.dart';
 
 /// Official download link published on M-VAVE's downloads page. The file is
 /// fetched from M-VAVE's own server; this app never redistributes it.
@@ -110,7 +113,16 @@ class _HomePageState extends State<HomePage> {
     _presets = PresetService(backend);
     _lifecycle = AppLifecycleListener(onExitRequested: _onExitRequested);
     // Detection only sends the identity query, so it is safe to run unasked.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _detect());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      unawaited(_detect());
+      if (!await onboardingSeen()) {
+        if (mounted) {
+          await showOnboarding(context);
+        }
+      } else if (Telemetry.available && await Telemetry.choice() == null) {
+        await _askReports();
+      }
+    });
   }
 
   // Async work outlives the page when the window closes mid-task.
@@ -202,11 +214,8 @@ class _HomePageState extends State<HomePage> {
   void _addLog(String line) {
     final String stamp = DateTime.now().toIso8601String().substring(11, 19);
     // The log is copied into public bug reports: no user name in paths.
-    final String? home =
-        Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
-    final String shown = home == null || home.isEmpty
-        ? line
-        : line.replaceAll(home, '~');
+    final String shown = Telemetry.scrub(line)!;
+    Telemetry.log(shown);
     if (mounted) {
       setState(() => _log.add('$stamp  $shown'));
     }
@@ -290,6 +299,30 @@ class _HomePageState extends State<HomePage> {
       });
     } finally {
       setState(() => _loadingPackage = false);
+    }
+  }
+
+  /// Asks whether crash and update reports may be sent, and keeps the answer.
+  Future<void> _askReports() async {
+    final bool? yes = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Send error reports?'),
+        content: const Text(reportsExplained),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Don't send"),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(Telemetry.on ? 'Keep sending' : 'Send reports'),
+          ),
+        ],
+      ),
+    );
+    if (yes != null) {
+      await Telemetry.choose(yes);
     }
   }
 
@@ -415,6 +448,11 @@ class _HomePageState extends State<HomePage> {
         _pedal!,
         (UpdateProgress p) => setState(() => _progress = p),
       );
+      Telemetry.update(
+        from: _pedal!.identity,
+        to: _package!.product,
+        after: after,
+      );
       _workspace.forgetPedal();
       setState(() {
         _stage = _Stage.success;
@@ -424,6 +462,11 @@ class _HomePageState extends State<HomePage> {
       await _detect();
     } catch (e) {
       _addLog('Update failed: $e');
+      Telemetry.update(
+        from: _pedal?.identity ?? '?',
+        to: _package?.product ?? '?',
+        error: e,
+      );
       setState(() {
         _stage = _Stage.failed;
         _resultMessage = '$e';
@@ -1166,26 +1209,24 @@ class _HomePageState extends State<HomePage> {
         ? 'In update mode · ${p.port.name}'
         : 'Firmware ${p.version} · ${p.port.name}';
     return AppBar(
-      backgroundColor: theme.colorScheme.surfaceContainer,
       titleSpacing: 16,
       title: Row(
         children: <Widget>[
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: p == null
-                ? theme.colorScheme.surfaceContainerHighest
+          _StatusLogo(
+            icon: _detecting
+                ? Icons.search
+                : p == null
+                ? Icons.usb_off
+                : p.port.bluetooth
+                ? Icons.bluetooth
+                : p.inLoader
+                ? Icons.system_update_alt
+                : Icons.check,
+            color: p == null
+                ? theme.colorScheme.outline
+                : p.inLoader
+                ? theme.colorScheme.tertiary
                 : theme.colorScheme.primary,
-            foregroundColor: p == null
-                ? theme.colorScheme.onSurfaceVariant
-                : theme.colorScheme.onPrimary,
-            child: Icon(
-              p == null
-                  ? Icons.usb_off
-                  : p.port.bluetooth
-                  ? Icons.bluetooth
-                  : Icons.usb,
-              size: 20,
-            ),
           ),
           const SizedBox(width: 12),
           Flexible(
@@ -1213,15 +1254,18 @@ class _HomePageState extends State<HomePage> {
       ),
       actions: <Widget>[
         if (MediaQuery.sizeOf(context).width >= 720)
-          FilledButton.tonalIcon(
-            onPressed: _busy ? null : _detect,
-            icon: _detecting
-                ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh),
-            label: Text(p == null ? 'Detect pedal' : 'Detect again'),
+          // Material 2 stretches app bar actions to the bar's full height.
+          Center(
+            child: FilledButton.tonalIcon(
+              onPressed: _busy ? null : _detect,
+              icon: _detecting
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+              label: Text(p == null ? 'Detect pedal' : 'Detect again'),
+            ),
           )
         else
           IconButton.filledTonal(
@@ -1244,6 +1288,12 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
         ),
+        if (Telemetry.available)
+          IconButton(
+            tooltip: 'Error reports',
+            icon: const Icon(Icons.bug_report_outlined),
+            onPressed: _askReports,
+          ),
         IconButton(
           tooltip: 'About',
           icon: const Icon(Icons.info_outline),
@@ -1301,6 +1351,13 @@ class _HomePageState extends State<HomePage> {
                         )
                       : null,
                 ),
+              if (_package != null &&
+                  _pedal != null &&
+                  !_pedal!.inLoader &&
+                  !_pedal!.port.bluetooth) ...<Widget>[
+                _VersionBanner(from: _pedal!.version, to: _package!.version),
+                const SizedBox(height: 12),
+              ],
               _firmwareCard(theme),
               const SizedBox(height: 12),
               _pedalCard(theme),
@@ -1347,14 +1404,31 @@ class _HomePageState extends State<HomePage> {
       done: p != null,
       children: <Widget>[
         if (p != null) ...<Widget>[
-          _InfoRow('Product', reportedFamilyOf(p.product)),
-          _InfoRow('Version', p.version),
-          _InfoRow('Source', _packageSource ?? ''),
-          _InfoRow('SHA-256', '${p.sha256.substring(0, 16)}…'),
-          _InfoRow('Package', p.officialName ?? 'not a known official package'),
+          _InfoRow(
+            'Product',
+            reportedFamilyOf(p.product),
+            Icons.category_outlined,
+          ),
+          _InfoRow('Version', p.version, Icons.new_releases_outlined),
+          _InfoRow('Source', _packageSource ?? '', Icons.cloud_done_outlined),
+          _InfoRow(
+            'SHA-256',
+            '${p.sha256.substring(0, 16)}…',
+            Icons.fingerprint,
+          ),
+          _InfoRow(
+            'Package',
+            p.officialName ?? 'not a known official package',
+            p.officialName != null
+                ? Icons.verified_outlined
+                : Icons.help_outline,
+          ),
           _InfoRow(
             'Loader',
             p.hasKnownLoader ? 'known, verified' : 'UNKNOWN (refused)',
+            p.hasKnownLoader
+                ? Icons.verified_user_outlined
+                : Icons.gpp_bad_outlined,
           ),
           const SizedBox(height: 8),
         ] else if (_packageError != null) ...<Widget>[
@@ -1365,10 +1439,18 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(height: 8),
         ] else
           const Padding(
-            padding: EdgeInsets.only(bottom: 8),
-            child: Text(
-              'Use the official .fwsc file from M-VAVE. Download it here or '
-              'open one you already have.',
+            padding: EdgeInsets.only(bottom: 12),
+            child: Row(
+              children: <Widget>[
+                IconBadge(Icons.cloud_download_outlined),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Use the official .fwsc file from M-VAVE. Download it '
+                    'here or open one you already have.',
+                  ),
+                ),
+              ],
             ),
           ),
         Wrap(
@@ -1410,6 +1492,7 @@ class _HomePageState extends State<HomePage> {
           _InfoRow(
             'Model',
             p.rebrand == null ? p.family : '${p.rebrand} (${p.family})',
+            Icons.speaker_outlined,
           ),
           _InfoRow(
             'Installed',
@@ -1418,8 +1501,13 @@ class _HomePageState extends State<HomePage> {
                 : p.inLoader
                 ? 'update mode'
                 : p.version,
+            Icons.memory,
           ),
-          _InfoRow('Port', p.port.name),
+          _InfoRow(
+            'Port',
+            p.port.name,
+            p.port.bluetooth ? Icons.bluetooth : Icons.usb,
+          ),
           if (p.inLoader)
             Padding(
               padding: const EdgeInsets.only(top: 8),
@@ -1432,12 +1520,20 @@ class _HomePageState extends State<HomePage> {
         ] else
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              _detectedOnce
-                  ? 'No Pocket AMP found. Connect it with a USB data cable, '
-                        'turn it on, close the M-VAVE app and try again.'
-                  : 'Connect the pedal by USB, turn it on and close any other '
-                        'app that uses MIDI.',
+            child: Row(
+              children: <Widget>[
+                const IconBadge(Icons.usb_off),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    _detectedOnce
+                        ? 'No Pocket AMP found. Connect it with a USB data cable, '
+                              'turn it on, close the M-VAVE app and try again.'
+                        : 'Connect the pedal by USB, turn it on and close any other '
+                              'app that uses MIDI.',
+                  ),
+                ),
+              ],
             ),
           ),
       ],
@@ -1495,18 +1591,23 @@ class _StepCard extends StatelessWidget {
 }
 
 class _InfoRow extends StatelessWidget {
-  const _InfoRow(this.label, this.value);
+  const _InfoRow(this.label, this.value, this.icon);
   final String label;
   final String value;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.only(right: 10, top: 1),
+            child: Icon(icon, size: 18, color: theme.colorScheme.primary),
+          ),
           SizedBox(
             width: 96,
             child: Text(
@@ -1526,35 +1627,168 @@ class _InfoRow extends StatelessWidget {
 class _WarningCard extends StatelessWidget {
   const _WarningCard();
 
+  static const List<(IconData, String)> _points = <(IconData, String)>[
+    (
+      Icons.save_outlined,
+      'A firmware update can overwrite some presets and their EQ. When it can '
+          'read them, the app backs up all 80 first and offers to restore them '
+          'when it is done.',
+    ),
+    (
+      Icons.battery_charging_full,
+      'Charge the battery and use a reliable USB data cable.',
+    ),
+    (
+      Icons.power_off_outlined,
+      'Do not unplug, turn off or let the computer sleep until the app says '
+          'it is done (about 2 minutes).',
+    ),
+    (
+      Icons.info_outline,
+      'Use at your own risk. This is a community tool, not affiliated with '
+          'M-VAVE.',
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final Color on = theme.colorScheme.onErrorContainer;
     return Card(
       color: theme.colorScheme.errorContainer,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: DefaultTextStyle.merge(
-          style: TextStyle(color: theme.colorScheme.onErrorContainer),
-          child: const Column(
+          style: TextStyle(color: on),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text(
-                'Before you update',
-                style: TextStyle(fontWeight: FontWeight.w600),
+              Row(
+                children: <Widget>[
+                  Icon(Icons.warning_amber_rounded, color: on),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Before you update',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ],
               ),
-              SizedBox(height: 8),
-              Text(
-                '• A firmware update can overwrite some presets and their EQ. '
-                'When it can read them, the app backs up all 80 first and offers '
-                'to restore them when it is done.\n'
-                '• Charge the battery and use a reliable USB data cable.\n'
-                '• Do not unplug, turn off or let the computer sleep until the '
-                'app says it is done (about 2 minutes).\n'
-                '• Use at your own risk. This is a community tool, not '
-                'affiliated with M-VAVE.',
-              ),
+              const SizedBox(height: 12),
+              for (final (IconData icon, String text) in _points)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Icon(icon, size: 18, color: on),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(text)),
+                    ],
+                  ),
+                ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The app logo with a badge for the pedal's state, at the top left.
+class _StatusLogo extends StatelessWidget {
+  const _StatusLogo({required this.icon, required this.color});
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme c = Theme.of(context).colorScheme;
+    return SizedBox.square(
+      dimension: 44,
+      child: Stack(
+        children: <Widget>[
+          Image.asset('assets/icon/app_icon.png', width: 40, height: 40),
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                border: Border.all(color: c.surface, width: 2),
+              ),
+              child: Icon(icon, size: 12, color: c.surface),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The version change an update makes, shown above the steps.
+class _VersionBanner extends StatelessWidget {
+  const _VersionBanner({required this.from, required this.to});
+  final String from;
+  final String to;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme c = theme.colorScheme;
+    return Card(
+      color: c.primaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          children: <Widget>[
+            const IconBadge(Icons.system_update_alt, size: 56, strong: true),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    from == to ? 'Already on this version' : 'Update ready',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: c.onPrimaryContainer,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  // One text, so each version is still written only once on
+                  // screen (the pedal card names the installed one).
+                  Text.rich(
+                    TextSpan(
+                      children: <InlineSpan>[
+                        TextSpan(text: from),
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.middle,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Icon(
+                              Icons.arrow_forward,
+                              size: 28,
+                              color: c.onPrimaryContainer,
+                            ),
+                          ),
+                        ),
+                        TextSpan(
+                          text: to,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                    semanticsLabel: 'From version $from to $to',
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      color: c.onPrimaryContainer,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
