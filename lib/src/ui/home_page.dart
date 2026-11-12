@@ -964,6 +964,8 @@ class _HomePageState extends State<HomePage> {
         ? 'Connect it by USB (or pair it by Bluetooth) and close other MIDI apps'
         : p.port.bluetooth
         ? 'Bluetooth · presets only'
+        : p.presetsOnly
+        ? 'Firmware ${p.version} · presets only · ${p.port.name}'
         : p.inLoader
         ? 'In update mode · ${p.port.name}'
         : 'Firmware ${p.version} · ${p.port.name}';

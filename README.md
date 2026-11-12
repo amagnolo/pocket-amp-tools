@@ -46,7 +46,7 @@ To check the installed version on the pedal itself, hold **Home** and press **>*
 
 ### Pocket AMP clones
 
-The same pedal is sold under other brands, and each reports its own name. The app keeps a list of names confirmed to be a Pocket AMP. A listed clone is detected as *NAME (Pocket AMP)* and can get the Pocket AMP firmware after a separate confirmation. A pedal that is not on the list is refused, because a different pedal that speaks the same protocol (an M-VAVE FM-1, for example) would be bricked by it.
+The same pedal is sold under other brands, and each reports its own name. The app keeps a list of names confirmed to be a Pocket AMP. A listed clone is detected as *NAME (Pocket AMP)* and can get the Pocket AMP firmware after a separate confirmation. A pedal that is not on the list never gets a firmware update, because a different pedal that speaks the same protocol (an M-VAVE FM-1, for example) would be bricked by it. If its preset area reads like a Pocket AMP's, it is detected as *presets only*: backups, presets and raw copies work, updates do not.
 
 | Clone | Reports | Status |
 | --- | --- | --- |
