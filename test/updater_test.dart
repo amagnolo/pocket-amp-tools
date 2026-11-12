@@ -6,6 +6,7 @@ import 'package:pocket_amp_tools/src/firmware_package.dart';
 import 'package:pocket_amp_tools/src/midi/midi_backend.dart';
 import 'package:pocket_amp_tools/src/ota_protocol.dart';
 import 'package:pocket_amp_tools/src/pedal_updater.dart';
+import 'package:pocket_amp_tools/src/presets/preset_service.dart';
 
 import 'support/fake_pedal.dart';
 
@@ -96,6 +97,20 @@ void main() {
       expect(familyOf('ota-DONNER Pocket AMP_008'), 'Pocket AMP');
       expect(rebrandOf('DONNER Pocket AMP_008'), 'DONNER Pocket AMP');
       expect(versionOf('DONNER Pocket AMP_008'), '0.08');
+    });
+
+    test('a raw copy keeps the identity its file name was made from', () {
+      // keepRaw writes `DONNER Pocket AMP_008` as `DONNER_Pocket_AMP_008`.
+      final String? id = PresetService.rawIdentity(
+        'raw-DONNER_Pocket_AMP_008-2026-11-10T205326.bin',
+      );
+      expect(id, 'DONNER Pocket AMP_008');
+      expect(familyOf(id!), 'Pocket AMP');
+      expect(
+        PresetService.rawIdentity('raw-PIXIE1_007-2026-11-09T222607.bin'),
+        'PIXIE1_007',
+      );
+      expect(PresetService.rawIdentity('backup.bin'), isNull);
     });
 
     test('parses a synthetic package', () {
