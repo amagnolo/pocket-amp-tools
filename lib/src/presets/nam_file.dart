@@ -112,8 +112,9 @@ List<double> _liteWeights(Object? root) {
   }
   if (root['architecture'] != 'SlimmableContainer') {
     throw const InvalidNamFile(
-      'This is an A1 capture: only A2 captures carry the small model the '
-      'pedal runs. Download the A2 version of this capture from TONE3000.',
+      'This file holds a single model (an A1 capture, or one A2 size '
+      'saved on its own), not a whole A2 capture: only an A2 capture carries '
+      'the small model the pedal runs. Download the A2 version from TONE3000.',
     );
   }
   final Object? subs = (root['config'] as Map<String, dynamic>?)?['submodels'];

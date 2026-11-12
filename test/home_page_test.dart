@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pocket_amp_tools/src/library/library.dart';
 import 'package:pocket_amp_tools/src/presets/mefcs.dart';
 import 'package:pocket_amp_tools/src/ui/home_page.dart';
 
@@ -45,35 +47,57 @@ void main() {
     },
   );
 
-  testWidgets('the Amps section lists the AMP slots with a .nam upload', (
+  testWidgets('the library adds a capture and sends it to an AMP slot', (
     WidgetTester tester,
   ) async {
-    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.physicalSize = const Size(1200, 2400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    final FakePedal pedal = FakePedal(image: Uint8List(1024), bank: demoBank());
-    await tester.pumpWidget(MaterialApp(home: HomePage(backend: pedal)));
+    final Directory tmp = Directory.systemTemp.createTempSync('library_ui_');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    final Library lib = Library(Directory('${tmp.path}/Library'));
     await tester.runAsync(
-      () => Future<void>.delayed(const Duration(seconds: 2)),
+      () => lib.import(
+        LibraryKind.amp,
+        'My Capture.nam',
+        File('test/fixtures/a2_lite_synthetic.nam').readAsBytesSync(),
+      ),
     );
-    await tester.pump();
-    // Let the presets read that starts on detection finish.
-    for (int i = 0; i < 400; i++) {
-      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-      await tester.pump(const Duration(milliseconds: 50));
-    }
-    await tester.tap(find.text('Amps'));
-    await tester.pump();
-    expect(find.textContaining('A2 .nam'), findsOneWidget);
-    if (find.text('Read from pedal').evaluate().isNotEmpty) {
-      await tester.tap(find.text('Read from pedal'));
-      for (int i = 0; i < 40; i++) {
-        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    final FakePedal pedal = FakePedal(image: Uint8List(1024), bank: demoBank());
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(backend: pedal, libraryRoot: lib.root),
+      ),
+    );
+    Future<void> settle([int n = 40]) async {
+      for (int i = 0; i < n; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)),
+        );
         await tester.pump(const Duration(milliseconds: 50));
       }
     }
-    expect(find.text(pedal.ampNames[5]), findsOneWidget);
-    expect(find.text('Replace with a .nam…'), findsNWidgets(20));
+
+    await settle(400); // detection, then the presets read it starts
+    await tester.tap(find.text('Library'));
+    await settle();
+    expect(find.text('My Capture'), findsOneWidget);
+    expect(find.text('Load from library…'), findsNWidgets(20));
+
+    await tester.tap(find.text('Send to pedal…'));
+    await settle(5);
+    await tester.tap(find.textContaining('20.  '));
+    await settle(5);
+    expect(find.text('Replace AMP slot 20?'), findsOneWidget);
+    await tester.tap(find.text('Replace'));
+    await settle(80);
+    expect(pedal.ampNames[19], 'My Capture');
+    expect(find.text('From your library: My Capture'), findsOneWidget);
+    expect(find.text('In slot 20'), findsOneWidget);
+
+    await tester.tap(find.text('Cabinets'));
+    await settle();
+    expect(find.text('Add WAV files…'), findsOneWidget);
   });
 
   testWidgets('edits a preset and writes only that one to the pedal', (
