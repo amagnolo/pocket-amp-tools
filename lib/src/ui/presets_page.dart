@@ -681,6 +681,18 @@ class _Detail extends StatelessWidget {
             ),
             if (showPicker) FilterButton(library: workspace.library),
             IconButton(
+              tooltip: 'Name, labels and rating',
+              onPressed: enabled
+                  ? () => showMetaEditor(
+                      context,
+                      workspace.library,
+                      id,
+                      slotName(id),
+                    )
+                  : null,
+              icon: const Icon(Icons.edit_note),
+            ),
+            IconButton(
               tooltip: 'Ask the assistant',
               onPressed: enabled
                   ? () async {
@@ -709,15 +721,7 @@ class _Detail extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 860),
-          child: MetaCard(
-            key: ValueKey<int>(id),
-            library: workspace.library,
-            id: id,
-            enabled: enabled,
-          ),
-        ),
+        MetaSummary(meta: workspace.library.metas[id]),
         const SizedBox(height: 16),
         Align(
           alignment: Alignment.centerLeft,

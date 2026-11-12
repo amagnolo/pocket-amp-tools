@@ -200,6 +200,10 @@ void main() {
       ),
     );
 
+    // Nothing to show yet, and no form taking room on the page.
+    expect(find.widgetWithText(TextField, 'Name'), findsNothing);
+    await tester.tap(find.byTooltip('Name, labels and rating'));
+    await tester.pumpAndSettle();
     await tester.enterText(
       find.widgetWithText(TextField, 'Name'),
       'British Clean Echo',
@@ -207,15 +211,20 @@ void main() {
     await tester.tap(find.text('Add genre'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(InputChip, 'Blues'));
-    await tester.tap(find.text('Done'));
+    await tester.tap(find.text('Done').last);
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('4 of 5'));
-    await tester.pump();
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
     expect(w.library.metas[0].name, 'British Clean Echo');
     expect(w.library.metas[0].labels[g], <String>{'Blues'});
     expect(w.library.metas[0].rating, 4);
     // The list names the preset after it.
     expect(find.widgetWithText(ListTile, 'British Clean Echo'), findsOneWidget);
+    // The page shows it as a summary.
+    expect(find.text('British Clean Echo'), findsNWidgets(2));
+    expect(find.text('Blues'), findsOneWidget);
+    expect(find.byIcon(Icons.star), findsNWidgets(4));
     expect(find.text('80 presets'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Filter presets'));

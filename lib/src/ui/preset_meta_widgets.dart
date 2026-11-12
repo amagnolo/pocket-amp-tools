@@ -4,7 +4,117 @@ import 'package:flutter/material.dart';
 
 import '../presets/preset_meta.dart';
 
-/// Name, rating, description and labels of one preset, edited in place.
+/// Name, rating, description and labels of one preset, at a glance; shows
+/// nothing for a preset that has none.
+class MetaSummary extends StatelessWidget {
+  const MetaSummary({super.key, required this.meta});
+  final PresetMeta meta;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final PresetMeta m = meta;
+    if (m.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final Color muted = theme.colorScheme.onSurfaceVariant;
+    final String labels = <String>[
+      for (final MetaCategory c in MetaCategory.values)
+        if (m.labels[c]!.isNotEmpty) m.labels[c]!.join(', '),
+    ].join('  ·  ');
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Flexible(
+                child: Text(
+                  m.name.isEmpty ? 'No name' : m.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: m.name.isEmpty ? muted : null,
+                  ),
+                ),
+              ),
+              if (m.rating > 0) ...<Widget>[
+                const SizedBox(width: 12),
+                Semantics(
+                  label: '${m.rating} of 5 stars',
+                  child: ExcludeSemantics(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        for (int s = 1; s <= 5; s++)
+                          Icon(
+                            s <= m.rating ? Icons.star : Icons.star_border,
+                            size: 16,
+                            color: s <= m.rating
+                                ? theme.colorScheme.primary
+                                : muted,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (m.description.isNotEmpty)
+            Text(
+              m.description,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(color: muted),
+            ),
+          if (labels.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                labels,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(color: muted),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Edits the name, rating, description and labels of preset [id].
+Future<void> showMetaEditor(
+  BuildContext context,
+  PresetLibrary library,
+  int id,
+  String title,
+) => showDialog<void>(
+  context: context,
+  builder: (BuildContext context) => AlertDialog(
+    title: Text(title),
+    content: SizedBox(
+      width: 560,
+      child: SingleChildScrollView(
+        child: ListenableBuilder(
+          listenable: library,
+          builder: (BuildContext context, _) =>
+              MetaCard(library: library, id: id, enabled: true),
+        ),
+      ),
+    ),
+    actions: <Widget>[
+      FilledButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Done'),
+      ),
+    ],
+  ),
+);
+
+/// The fields of [showMetaEditor].
 class MetaCard extends StatefulWidget {
   const MetaCard({
     super.key,
@@ -47,113 +157,106 @@ class _MetaCardState extends State<MetaCard> {
     final ThemeData theme = Theme.of(context);
     final PresetMeta m = _meta;
     final bool on = widget.enabled;
-    return Card.outlined(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            LayoutBuilder(
-              builder: (BuildContext context, BoxConstraints box) {
-                final Widget name = TextField(
-                  controller: _name,
-                  enabled: on,
-                  decoration: const InputDecoration(
-                    labelText: 'Name',
-                    hintText: 'A short name for this sound',
-                  ),
-                  onChanged: (String v) => _edit((PresetMeta m) => m.name = v),
-                );
-                final Widget stars = StarRating(
-                  rating: m.rating,
-                  onChanged: on
-                      ? (int r) => _edit((PresetMeta m) => m.rating = r)
-                      : null,
-                );
-                // Stars go under the name where both would not fit.
-                return box.maxWidth < 520
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[name, stars],
-                      )
-                    : Row(
-                        children: <Widget>[
-                          Expanded(child: name),
-                          const SizedBox(width: 16),
-                          stars,
-                        ],
-                      );
-              },
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _description,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints box) {
+            final Widget name = TextField(
+              controller: _name,
               enabled: on,
-              minLines: 1,
-              maxLines: 4,
               decoration: const InputDecoration(
-                labelText: 'Description',
-                hintText: 'How it sounds and how it is built',
+                labelText: 'Name',
+                hintText: 'A short name for this sound',
               ),
-              onChanged: (String v) =>
-                  _edit((PresetMeta m) => m.description = v),
-            ),
-            for (final MetaCategory c in MetaCategory.values)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    SizedBox(
-                      width: 72,
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(c.title, style: theme.textTheme.labelLarge),
-                      ),
-                    ),
-                    Expanded(
-                      child: Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: <Widget>[
-                          for (final String l in m.labels[c]!)
-                            Chip(
-                              label: Text(l),
-                              visualDensity: VisualDensity.compact,
-                            ),
-                          ActionChip(
-                            avatar: Icon(
-                              m.labels[c]!.isEmpty
-                                  ? Icons.add
-                                  : Icons.edit_outlined,
-                              size: 18,
-                            ),
-                            label: Text(
-                              m.labels[c]!.isEmpty
-                                  ? 'Add ${c.singular.toLowerCase()}'
-                                  : 'Change',
-                            ),
-                            tooltip: 'Pick ${c.title.toLowerCase()}',
-                            visualDensity: VisualDensity.compact,
-                            onPressed: on
-                                ? () => showLabelEditor(
-                                    context,
-                                    widget.library,
-                                    c,
-                                    meta: m,
-                                  )
-                                : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
+              onChanged: (String v) => _edit((PresetMeta m) => m.name = v),
+            );
+            final Widget stars = StarRating(
+              rating: m.rating,
+              onChanged: on
+                  ? (int r) => _edit((PresetMeta m) => m.rating = r)
+                  : null,
+            );
+            // Stars go under the name where both would not fit.
+            return box.maxWidth < 520
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[name, stars],
+                  )
+                : Row(
+                    children: <Widget>[
+                      Expanded(child: name),
+                      const SizedBox(width: 16),
+                      stars,
+                    ],
+                  );
+          },
         ),
-      ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _description,
+          enabled: on,
+          minLines: 1,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            labelText: 'Description',
+            hintText: 'How it sounds and how it is built',
+          ),
+          onChanged: (String v) => _edit((PresetMeta m) => m.description = v),
+        ),
+        for (final MetaCategory c in MetaCategory.values)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                SizedBox(
+                  width: 72,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(c.title, style: theme.textTheme.labelLarge),
+                  ),
+                ),
+                Expanded(
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: <Widget>[
+                      for (final String l in m.labels[c]!)
+                        Chip(
+                          label: Text(l),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ActionChip(
+                        avatar: Icon(
+                          m.labels[c]!.isEmpty
+                              ? Icons.add
+                              : Icons.edit_outlined,
+                          size: 18,
+                        ),
+                        label: Text(
+                          m.labels[c]!.isEmpty
+                              ? 'Add ${c.singular.toLowerCase()}'
+                              : 'Change',
+                        ),
+                        tooltip: 'Pick ${c.title.toLowerCase()}',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: on
+                            ? () => showLabelEditor(
+                                context,
+                                widget.library,
+                                c,
+                                meta: m,
+                              )
+                            : null,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

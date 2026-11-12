@@ -231,7 +231,7 @@ void main() {
             await settle();
             return;
           }
-          await tester.tap(find.text('Read presets from the pedal'));
+          // The presets are read on their own once the pedal is detected.
           await settle();
           await settle();
           if (name == 'presets') {
@@ -239,12 +239,12 @@ void main() {
           }
           await tester.pump();
           // One edit, so the "write" button and the changed marker show.
-          // The block cards sit below the preset's details: scroll to them,
-          // edit, and scroll back.
-          // Kept by element: "Genres" scrolls away.
+          // The block cards can sit below the window: scroll to them, edit,
+          // and scroll back.
+          // Kept by element: "Volume" scrolls away.
           final Element list = find
               .ancestor(
-                of: find.text('Genres'),
+                of: find.text('Volume'),
                 matching: find.byType(Scrollable),
               )
               .first
