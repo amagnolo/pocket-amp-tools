@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../presets/ir_upload.dart';
+import 'visuals.dart';
 
 /// The 20 CAB slots, with a way to put a user IR in one of them.
 class CabinetsPage extends StatelessWidget {
@@ -18,7 +19,15 @@ class CabinetsPage extends StatelessWidget {
     required this.messageIsError,
     required this.onReadNames,
     required this.onReplace,
+    this.copies = const <int, String>{},
+    this.onRestoreCopy,
+    this.amp = false,
+    this.onKind,
   });
+
+  /// Shows the 20 AMP slots (amp captures) instead of the 20 CAB slots.
+  final bool amp;
+  final void Function(bool amp)? onKind;
 
   /// As stored on the pedal; null until read.
   final List<String>? names;
@@ -34,6 +43,11 @@ class CabinetsPage extends StatelessWidget {
   final VoidCallback onReadNames;
   final void Function(int slot) onReplace;
 
+  /// Slots with a copy of the IR this app sent there: the name it was sent as.
+  /// The pedal cannot give an IR back, so these are the only copies.
+  final Map<int, String> copies;
+  final void Function(int slot)? onRestoreCopy;
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
@@ -47,10 +61,17 @@ class CabinetsPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text('Cabinets', style: theme.textTheme.titleLarge),
                   Text(
-                    'Put your own IRs in the 20 CAB slots: WAV, 44.1 kHz, '
-                    'mono, 24-bit, $irSampleCount samples.',
+                    amp ? 'Amp captures' : 'Cabinets',
+                    style: theme.textTheme.titleLarge,
+                  ),
+                  Text(
+                    amp
+                        ? 'Put your own captures in the 20 AMP slots: AM3 '
+                              'with its LMT block (from M-EFCS) or a pedal NAM '
+                              'model (from the Tone3000 converter).'
+                        : 'Put your own IRs in the 20 CAB slots: WAV, 44.1 '
+                              'kHz, mono, 24-bit, $irSampleCount samples.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -66,6 +87,26 @@ class CabinetsPage extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
+        if (onKind != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: SegmentedButton<bool>(
+              segments: const <ButtonSegment<bool>>[
+                ButtonSegment<bool>(
+                  value: false,
+                  label: Text('CAB'),
+                  icon: BlockIcon('CAB', size: 18),
+                ),
+                ButtonSegment<bool>(
+                  value: true,
+                  label: Text('AMP'),
+                  icon: BlockIcon('AMP', size: 18),
+                ),
+              ],
+              selected: <bool>{amp},
+              onSelectionChanged: (Set<bool> s) => onKind!(s.first),
+            ),
+          ),
         if (irNeedsUsb)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -91,14 +132,12 @@ class CabinetsPage extends StatelessWidget {
             ),
           ),
         if (n == null)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 32),
-            child: Text(
-              canUsePedal
-                  ? 'Read the slot names from the pedal to start.'
-                  : 'Connect the pedal to see its CAB slots.',
-              textAlign: TextAlign.center,
-            ),
+          EmptyState(
+            icon: Icons.speaker_group_outlined,
+            title: amp ? 'Your own amps' : 'Your own cabinets',
+            message: canUsePedal
+                ? 'Read the slot names from the pedal to start.'
+                : 'Connect the pedal to see its ${amp ? 'AMP' : 'CAB'} slots.',
           )
         else
           Card.outlined(
@@ -109,12 +148,15 @@ class CabinetsPage extends StatelessWidget {
                 for (int i = 0; i < n.length; i++) ...<Widget>[
                   if (i > 0) const Divider(height: 1),
                   ListTile(
-                    leading: SizedBox(
-                      width: 28,
+                    leading: CircleAvatar(
+                      radius: 18,
+                      backgroundColor: theme.colorScheme.secondaryContainer,
+                      foregroundColor: theme.colorScheme.onSecondaryContainer,
                       child: Text(
                         '${i + 1}',
-                        style: theme.textTheme.labelLarge,
-                        textAlign: TextAlign.end,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: theme.colorScheme.onSecondaryContainer,
+                        ),
                       ),
                     ),
                     title: Text(
@@ -124,12 +166,37 @@ class CabinetsPage extends StatelessWidget {
                           ? '?${n[0].substring(1)}'
                           : n[i],
                     ),
-                    trailing: TextButton.icon(
-                      onPressed: canUsePedal && !irNeedsUsb && !busy
-                          ? () => onReplace(i)
-                          : null,
-                      icon: const Icon(Icons.upload_file),
-                      label: const Text('Replace with a WAV…'),
+                    subtitle: copies.containsKey(i)
+                        ? Text(
+                            'Copy kept: "${copies[i]}"',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          )
+                        : null,
+                    trailing: Wrap(
+                      spacing: 4,
+                      children: <Widget>[
+                        if (copies.containsKey(i) && onRestoreCopy != null)
+                          TextButton.icon(
+                            onPressed: canUsePedal && !irNeedsUsb && !busy
+                                ? () => onRestoreCopy!(i)
+                                : null,
+                            icon: const Icon(Icons.history),
+                            label: const Text('Restore copy…'),
+                          ),
+                        TextButton.icon(
+                          onPressed: canUsePedal && !irNeedsUsb && !busy
+                              ? () => onReplace(i)
+                              : null,
+                          icon: const Icon(Icons.upload_file),
+                          label: Text(
+                            amp
+                                ? 'Replace with a capture…'
+                                : 'Replace with a WAV…',
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -146,8 +213,9 @@ Future<String?> confirmIrUpload(
   BuildContext context,
   int slot,
   String current,
-  String suggested,
-) {
+  String suggested, {
+  bool amp = false,
+}) {
   final TextEditingController name = TextEditingController(
     text: sanitizeIrName(suggested),
   );
@@ -155,15 +223,16 @@ Future<String?> confirmIrUpload(
     context: context,
     builder: (BuildContext context) => AlertDialog(
       icon: const Icon(Icons.warning_amber_rounded),
-      title: Text('Replace CAB slot ${slot + 1}?'),
+      title: Text('Replace ${amp ? 'AMP' : 'CAB'} slot ${slot + 1}?'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            '"$current" is replaced for good: the app cannot read IRs back '
-            'from the pedal, so it cannot keep a copy. Presets that use this '
-            'slot will play the new IR.',
+            '"$current" is replaced for good: the pedal cannot give it back. '
+            'The app keeps a copy of the new one, to restore it later. '
+            'Presets that use this slot will play the new '
+            '${amp ? 'capture' : 'IR'}.',
           ),
           const SizedBox(height: 16),
           TextField(

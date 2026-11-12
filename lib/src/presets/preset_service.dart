@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../firmware_package.dart';
 import '../midi/midi_backend.dart';
 import '../pedal_updater.dart';
+import 'amp_upload.dart';
 import 'ir_upload.dart';
 import 'live_link.dart';
 import 'preset_backup.dart';
@@ -122,20 +123,53 @@ class PresetService {
     String name,
     Uint8List pcm, {
     void Function(double fraction)? onProgress,
+  }) => _sendToSlot(
+    pedal,
+    irUploadPackets(slot, name, pcm),
+    slot,
+    name,
+    amp: false,
+    onProgress: onProgress,
+  );
+
+  /// Puts the capture [image] (see [parseAmpFile]) in AMP slot [slot] (0..19)
+  /// named [name] and returns the AMP names read back afterwards.
+  Future<List<String>> uploadAmp(
+    DetectedPedal pedal,
+    int slot,
+    String name,
+    Uint8List image, {
+    void Function(double fraction)? onProgress,
+  }) => _sendToSlot(
+    pedal,
+    ampUploadPackets(slot, name, image),
+    slot,
+    name,
+    amp: true,
+    onProgress: onProgress,
+  );
+
+  Future<List<String>> _sendToSlot(
+    DetectedPedal pedal,
+    List<(Uint8List, String)> packets,
+    int slot,
+    String name, {
+    required bool amp,
+    void Function(double fraction)? onProgress,
   }) async {
     _checkPedal(pedal);
+    final String what = amp ? 'an amp capture' : 'an IR';
     if (pedal.port.bluetooth) {
-      throw const PresetIoException('Uploading an IR needs the USB cable.');
+      throw PresetIoException('Uploading $what needs the USB cable.');
     }
-    final List<(Uint8List, String)> packets = irUploadPackets(slot, name, pcm);
     final PresetSession s = PresetSession(await _open(pedal));
     try {
-      for (final (int i, (Uint8List packet, String what)) in packets.indexed) {
+      for (final (int i, (Uint8List packet, String step)) in packets.indexed) {
         // The last packet copies the buffer to flash.
-        await s.write(packet, what, once: i == packets.length - 1);
+        await s.write(packet, step, once: i == packets.length - 1);
         onProgress?.call((i + 1) / packets.length);
       }
-      final List<String> names = await s.readNames(amp: false);
+      final List<String> names = await s.readNames(amp: amp);
       // The pedal overwrites the first character of the first name.
       final String want = sanitizeIrName(name);
       final String got = names[slot];
@@ -144,8 +178,8 @@ class PresetService {
           : got == want;
       if (!same) {
         throw PresetIoException(
-          'The pedal answered, but slot ${slot + 1} reads "$got", not '
-          '"$want". Send the IR again.',
+          'The pedal answered, but ${amp ? 'AMP' : 'CAB'} slot ${slot + 1} '
+          'reads "$got", not "$want". Send it again.',
         );
       }
       return names;

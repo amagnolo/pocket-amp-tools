@@ -45,6 +45,15 @@ void main() {
   final String fonts =
       '${Platform.environment['FLUTTER_ROOT']}/bin/cache/artifacts/material_fonts';
 
+  // Each screen gets its own app folder where the introduction was seen,
+  // so it does not cover the screen.
+  setUp(() {
+    final Directory dir = Directory.systemTemp.createTempSync('pa-');
+    File('${dir.path}/onboarded').writeAsStringSync('1');
+    PathProviderPlatform.instance = _Paths(dir.path);
+    addTearDown(() => dir.deleteSync(recursive: true));
+  });
+
   setUpAll(() async {
     await _loadFont('Roboto', <String>[
       '$fonts/Roboto-Regular.ttf',
@@ -139,6 +148,7 @@ void main() {
           if (name == 'backups') {
             final Directory dir = Directory.systemTemp.createTempSync('pa-');
             addTearDown(() => dir.deleteSync(recursive: true));
+            File('${dir.path}/onboarded').writeAsStringSync('1');
             PathProviderPlatform.instance = _Paths(dir.path);
             await tester.runAsync(() async {
               for (final (int days, String id) in <(int, String)>[
