@@ -45,6 +45,37 @@ void main() {
     },
   );
 
+  testWidgets('the Amps section lists the AMP slots with a .nam upload', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final FakePedal pedal = FakePedal(image: Uint8List(1024), bank: demoBank());
+    await tester.pumpWidget(MaterialApp(home: HomePage(backend: pedal)));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(seconds: 2)),
+    );
+    await tester.pump();
+    // Let the presets read that starts on detection finish.
+    for (int i = 0; i < 400; i++) {
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    await tester.tap(find.text('Amps'));
+    await tester.pump();
+    expect(find.textContaining('A2 .nam'), findsOneWidget);
+    if (find.text('Read from pedal').evaluate().isNotEmpty) {
+      await tester.tap(find.text('Read from pedal'));
+      for (int i = 0; i < 40; i++) {
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    }
+    expect(find.text(pedal.ampNames[5]), findsOneWidget);
+    expect(find.text('Replace with a .nam…'), findsNWidgets(20));
+  });
+
   testWidgets('edits a preset and writes only that one to the pedal', (
     WidgetTester tester,
   ) async {

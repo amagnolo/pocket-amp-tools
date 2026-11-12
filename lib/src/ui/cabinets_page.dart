@@ -4,9 +4,17 @@ import 'package:flutter/material.dart';
 
 import '../presets/ir_upload.dart';
 
-/// The 20 CAB slots, with a way to put a user IR in one of them.
+/// The 20 CAB slots, with a way to put a user IR in one of them; with the
+/// AMP texts, the 20 AMP slots and a way to put a .nam capture in one.
 class CabinetsPage extends StatelessWidget {
   const CabinetsPage({
+    this.block = 'CAB',
+    this.title = 'Cabinets',
+    this.intro =
+        'Put your own IRs in the 20 CAB slots: WAV, 44.1 kHz, '
+        'mono, 24-bit, $irSampleCount samples.',
+    this.what = 'IRs',
+    this.replaceLabel = 'Replace with a WAV…',
     super.key,
     required this.names,
     required this.canUsePedal,
@@ -33,6 +41,7 @@ class CabinetsPage extends StatelessWidget {
   final bool messageIsError;
   final VoidCallback onReadNames;
   final void Function(int slot) onReplace;
+  final String block, title, intro, what, replaceLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -47,10 +56,9 @@ class CabinetsPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text('Cabinets', style: theme.textTheme.titleLarge),
+                  Text(title, style: theme.textTheme.titleLarge),
                   Text(
-                    'Put your own IRs in the 20 CAB slots: WAV, 44.1 kHz, '
-                    'mono, 24-bit, $irSampleCount samples.',
+                    intro,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -71,7 +79,7 @@ class CabinetsPage extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: 12),
             child: Text(
               'The pedal is connected over Bluetooth. Connect the USB cable '
-              'to upload IRs.',
+              'to upload $what.',
               style: TextStyle(color: theme.colorScheme.tertiary),
             ),
           ),
@@ -96,7 +104,7 @@ class CabinetsPage extends StatelessWidget {
             child: Text(
               canUsePedal
                   ? 'Read the slot names from the pedal to start.'
-                  : 'Connect the pedal to see its CAB slots.',
+                  : 'Connect the pedal to see its $block slots.',
               textAlign: TextAlign.center,
             ),
           )
@@ -129,7 +137,7 @@ class CabinetsPage extends StatelessWidget {
                           ? () => onReplace(i)
                           : null,
                       icon: const Icon(Icons.upload_file),
-                      label: const Text('Replace with a WAV…'),
+                      label: Text(replaceLabel),
                     ),
                   ),
                 ],
@@ -146,8 +154,11 @@ Future<String?> confirmIrUpload(
   BuildContext context,
   int slot,
   String current,
-  String suggested,
-) {
+  String suggested, {
+  String block = 'CAB',
+  String what = 'IRs',
+  String plays = 'IR',
+}) {
   final TextEditingController name = TextEditingController(
     text: sanitizeIrName(suggested),
   );
@@ -155,15 +166,15 @@ Future<String?> confirmIrUpload(
     context: context,
     builder: (BuildContext context) => AlertDialog(
       icon: const Icon(Icons.warning_amber_rounded),
-      title: Text('Replace CAB slot ${slot + 1}?'),
+      title: Text('Replace $block slot ${slot + 1}?'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            '"$current" is replaced for good: the app cannot read IRs back '
+            '"$current" is replaced for good: the app cannot read $what back '
             'from the pedal, so it cannot keep a copy. Presets that use this '
-            'slot will play the new IR.',
+            'slot will play the new $plays.',
           ),
           const SizedBox(height: 16),
           TextField(

@@ -20,6 +20,7 @@ import '../presets/preset_service.dart';
 import '../presets/preset_session.dart';
 import '../net/capped_http.dart';
 import '../presets/ir_upload.dart';
+import '../presets/nam_file.dart';
 import 'backups_page.dart';
 import 'cabinets_page.dart';
 import 'presets_page.dart';
@@ -304,7 +305,7 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         _pedal = p;
         if (p != null && p.inLoader) {
-          _section = 2;
+          _section = 3;
         }
       });
     } catch (e) {
@@ -701,6 +702,62 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  Future<void> _replaceAmp(int slot) async {
+    final XFile? file = await openFile(
+      acceptedTypeGroups: const <XTypeGroup>[
+        XTypeGroup(label: 'NAM capture (A2)', extensions: <String>['nam']),
+      ],
+    );
+    if (file == null) {
+      return;
+    }
+    final String json;
+    try {
+      // An A2 file with every size is a few hundred KB.
+      if (await file.length() > 16 << 20) {
+        throw const InvalidNamFile('the file is too large for a .nam');
+      }
+      json = await file.readAsString();
+      namFileToImage(json, 'check'); // refuse before asking for a name
+    } on Object catch (e) {
+      if (e is! InvalidNamFile && e is! FileSystemException) {
+        rethrow;
+      }
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _presetMessage = '${file.name}: $e';
+        _presetError = true;
+      });
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    final String? name = await confirmIrUpload(
+      context,
+      slot,
+      _workspace.ampNames?[slot] ?? 'slot ${slot + 1}',
+      file.name.replaceAll(RegExp(r'\.nam$', caseSensitive: false), ''),
+      block: 'AMP',
+      what: 'models',
+      plays: 'model',
+    );
+    if (name == null) {
+      return;
+    }
+    await _runPresetTask('Sending the model', () async {
+      _workspace.ampNames = await _presets.uploadAmp(
+        _pedal!,
+        slot,
+        namFileToImage(json, name),
+        onProgress: (double f) => setState(() => _presetFraction = f),
+      );
+      return 'Model stored in AMP slot ${slot + 1} as "$name".';
+    });
+  }
+
   Future<void> _editBackup(PresetBackup b, String name) async {
     if (!await _confirmDiscard('Open this backup?')) {
       return;
@@ -831,6 +888,7 @@ class _HomePageState extends State<HomePage> {
   static const List<(IconData, IconData, String)> _sections =
       <(IconData, IconData, String)>[
         (Icons.tune_outlined, Icons.tune, 'Presets'),
+        (Icons.graphic_eq_outlined, Icons.graphic_eq, 'Amps'),
         (Icons.speaker_outlined, Icons.speaker, 'Cabinets'),
         (Icons.system_update_alt_outlined, Icons.system_update_alt, 'Firmware'),
         (Icons.inventory_2_outlined, Icons.inventory_2, 'Backups'),
@@ -864,6 +922,25 @@ class _HomePageState extends State<HomePage> {
         onLive: _setLive,
       ),
       1 => CabinetsPage(
+        block: 'AMP',
+        title: 'Amps',
+        intro:
+            'Put a TONE3000 capture in one of the 20 AMP slots: an A2 .nam '
+            'file. The pedal plays its small (Lite) model as it is.',
+        what: 'models',
+        replaceLabel: 'Replace with a .nam…',
+        names: _workspace.ampNames,
+        canUsePedal: _pedal != null && !_pedal!.inLoader,
+        irNeedsUsb: _pedal?.port.bluetooth ?? false,
+        busy: _busy,
+        task: _presetTask,
+        fraction: _presetFraction,
+        message: _presetMessage,
+        messageIsError: _presetError,
+        onReadNames: _readNames,
+        onReplace: _replaceAmp,
+      ),
+      2 => CabinetsPage(
         names: _workspace.cabNames,
         canUsePedal: _pedal != null && !_pedal!.inLoader,
         irNeedsUsb: _pedal?.port.bluetooth ?? false,
@@ -875,7 +952,7 @@ class _HomePageState extends State<HomePage> {
         onReadNames: _readNames,
         onReplace: _replaceIr,
       ),
-      2 => _firmwarePage(theme),
+      3 => _firmwarePage(theme),
       _ => BackupsPage(
         list: PresetService.kept,
         canRestore: _pedal != null && !_pedal!.inLoader && !_busy,
