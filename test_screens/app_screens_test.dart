@@ -5,6 +5,7 @@
 //     flutter test test_screens --update-goldens
 //
 // The PNGs land in test_screens/goldens/.
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -30,6 +31,44 @@ class _Paths extends PathProviderPlatform {
   @override
   Future<String?> getApplicationSupportPath() async => dir;
 }
+
+/// Names and labels for a few slots, as a user would give them.
+const Map<String, Object> _library = <String, Object>{
+  'labels': <String, Object>{
+    'tags': <String>['Headphones', 'Live'],
+  },
+  'presets': <String, Object>{
+    'P01': <String, Object>{
+      'name': 'British Clean Echo',
+      'genres': <String>['Blues', 'Pop'],
+      'uses': <String>['Rhythm', 'Arpeggios'],
+      'rating': 4,
+    },
+    'P02': <String, Object>{
+      'name': 'RAT British Rock',
+      'genres': <String>['Rock', 'Punk'],
+      'uses': <String>['Riffs'],
+      'rating': 3,
+    },
+    'P04': <String, Object>{
+      'name': 'High Gain Lead',
+      'genres': <String>['Hard rock'],
+      'uses': <String>['Riffs', 'Solo'],
+      'tags': <String>['Live'],
+      'rating': 5,
+    },
+    'P05': <String, Object>{
+      'name': 'Deluxe Clean Direct',
+      'description':
+          'Warm, smooth clean tone with slightly rolled-off highs. '
+          'Barely noticeable reverb and moderate delay.',
+      'genres': <String>['Blues', 'Country', 'Pop'],
+      'uses': <String>['Rhythm', 'Arpeggios'],
+      'tags': <String>['Headphones'],
+      'rating': 4,
+    },
+  },
+};
 
 Future<void> _loadFont(String family, List<String> files) async {
   final FontLoader loader = FontLoader(family);
@@ -122,12 +161,23 @@ void main() {
           }
         }
 
+        if (name.startsWith('presets')) {
+          final Directory dir = Directory.systemTemp.createTempSync('pa-');
+          addTearDown(() => dir.deleteSync(recursive: true));
+          PathProviderPlatform.instance = _Paths(dir.path);
+          File('${dir.path}/preset-library.json')
+              .writeAsStringSync(jsonEncode(_library));
+        }
         await http.runWithClient(() async {
-          await tester.pumpWidget(
-            PocketAmpApp(
-              backend: FakePedal(image: Uint8List(1024), bank: bank),
-            ),
-          );
+          // The preset library is read from disk, on real time only.
+          await tester.runAsync(() async {
+            await tester.pumpWidget(
+              PocketAmpApp(
+                backend: FakePedal(image: Uint8List(1024), bank: bank),
+              ),
+            );
+            await Future<void>.delayed(const Duration(milliseconds: 300));
+          });
           await settle();
           if (name == 'firmware') {
             await tester.tap(find.text('Firmware'));
@@ -189,17 +239,41 @@ void main() {
           }
           await tester.pump();
           // One edit, so the "write" button and the changed marker show.
-          await tester.tap(
-            find
-                .descendant(
-                  of: find.ancestor(
-                    of: find.text('FX'),
-                    matching: find.byType(Card),
-                  ),
-                  matching: find.byType(Switch),
-                )
-                .first,
+          // The block cards sit below the preset's details: scroll to them,
+          // edit, and scroll back.
+          // Kept by element: "Genres" scrolls away.
+          final Element list = find
+              .ancestor(
+                of: find.text('Genres'),
+                matching: find.byType(Scrollable),
+              )
+              .first
+              .evaluate()
+              .single;
+          final Finder details = find.byElementPredicate(
+            (Element e) => e == list,
           );
+          await tester.scrollUntilVisible(
+            find.text('Signal chain'),
+            300,
+            scrollable: details,
+          );
+          await tester.drag(details, const Offset(0, -300));
+          await tester.pumpAndSettle();
+          final Finder fx = find
+              .descendant(
+                of: find.ancestor(
+                  of: find.text('FX'),
+                  matching: find.byType(Card),
+                ),
+                matching: find.byType(Switch),
+              )
+              .first;
+          await tester.ensureVisible(fx);
+          await tester.pumpAndSettle();
+          await tester.tap(fx);
+          await tester.pumpAndSettle();
+          await tester.drag(details, const Offset(0, 5000));
           await tester.pumpAndSettle();
         }, () => MockClient((_) async => http.Response.bytes(pkg, 200)));
 

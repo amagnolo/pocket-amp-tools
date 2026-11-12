@@ -95,6 +95,7 @@ class _HomePageState extends State<HomePage> {
     _updater = PedalUpdater(backend, log: _addLog);
     _presets = PresetService(backend);
     _lifecycle = AppLifecycleListener(onExitRequested: _onExitRequested);
+    _workspace.library.open();
     // Detection only sends the identity query, so it is safe to run unasked.
     WidgetsBinding.instance.addPostFrameCallback((_) => _detect());
   }

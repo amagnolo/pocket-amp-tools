@@ -40,7 +40,7 @@ void main() {
   testWidgets('edits a preset and writes only that one to the pedal', (
     WidgetTester tester,
   ) async {
-    tester.view.physicalSize = const Size(1400, 1000);
+    tester.view.physicalSize = const Size(1400, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final Uint8List bank = demoBank();
@@ -100,7 +100,7 @@ void main() {
   testWidgets('never holds two sessions, even while live editing opens', (
     WidgetTester tester,
   ) async {
-    tester.view.physicalSize = const Size(1400, 1000);
+    tester.view.physicalSize = const Size(1400, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final FakePedal pedal = FakePedal(image: Uint8List(1024), bank: demoBank());
@@ -158,7 +158,7 @@ void main() {
     }
 
     Future<void> start(WidgetTester tester) async {
-      tester.view.physicalSize = const Size(1400, 1000);
+      tester.view.physicalSize = const Size(1400, 1600);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       pedal = FakePedal(image: Uint8List(1024), bank: demoBank());

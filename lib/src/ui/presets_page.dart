@@ -9,7 +9,9 @@ import '../presets/block_models.dart';
 import '../presets/live_link.dart';
 import '../presets/mefcs.dart';
 import '../presets/preset_backup.dart';
+import '../presets/preset_meta.dart';
 import 'assistant_dialog.dart';
+import 'preset_meta_widgets.dart';
 
 /// The bank being edited and the bank last seen on the pedal, kept while the
 /// user moves between sections.
@@ -26,6 +28,15 @@ class PresetWorkspace extends ChangeNotifier {
 
   /// Set while the edits are played on the pedal as they are made.
   LiveLink? live;
+
+  /// Names, labels and ratings of the slots, kept by the app.
+  final PresetLibrary library = PresetLibrary();
+
+  @override
+  void dispose() {
+    library.dispose();
+    super.dispose();
+  }
 
   /// AMP and CAB names read from the pedal, as stored.
   List<String>? ampNames;
@@ -197,7 +208,7 @@ class PresetsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: workspace,
+      listenable: Listenable.merge(<Listenable>[workspace, workspace.library]),
       builder: (BuildContext context, _) {
         final PresetBackup? draft = workspace.draft;
         return Column(
@@ -447,49 +458,110 @@ class _PresetList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: presetCount,
-      itemExtent: 60,
-      itemBuilder: (BuildContext context, int id) {
-        final bool selected = id == workspace.selected;
-        return ListTile(
-          selected: selected,
-          selectedTileColor: theme.colorScheme.secondaryContainer,
-          shape: const StadiumBorder(),
-          contentPadding: const EdgeInsets.only(left: 16, right: 12),
-          leading: Text(
-            slotName(id),
-            style: theme.textTheme.labelLarge?.copyWith(
-              fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
-            ),
+    final PresetLibrary lib = workspace.library;
+    final List<int> shown = <int>[
+      for (int id = 0; id < presetCount; id++)
+        if (lib.matches(id)) id,
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  lib.filtering
+                      ? '${shown.length} of $presetCount presets'
+                      : '$presetCount presets',
+                  style: theme.textTheme.labelLarge,
+                ),
+              ),
+              if (lib.filtering)
+                TextButton(
+                  onPressed: lib.clearFilter,
+                  child: const Text('Clear'),
+                ),
+              FilterButton(library: lib),
+            ],
           ),
-          title: Text(
-            workspace.modelLabel('AMP', draft.model(id, 1)),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: shown.length,
+            itemExtent: 60,
+            itemBuilder: (BuildContext context, int i) =>
+                _tile(context, theme, shown[i]),
           ),
-          subtitle: Text(
-            _summary(draft, id),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall,
-          ),
-          trailing: changed.contains(id)
-              ? Tooltip(
-                  message: 'Differs from the pedal',
-                  child: Icon(
-                    Icons.circle,
-                    size: 10,
-                    color: theme.colorScheme.primary,
-                  ),
-                )
-              : null,
-          onTap: () => workspace.select(id),
-        );
-      },
+        ),
+      ],
     );
   }
+
+  Widget _tile(BuildContext context, ThemeData theme, int id) {
+    final bool selected = id == workspace.selected;
+    final PresetMeta meta = workspace.library.metas[id];
+    final String amp = workspace.modelLabel('AMP', draft.model(id, 1));
+    return ListTile(
+      selected: selected,
+      selectedTileColor: theme.colorScheme.secondaryContainer,
+      shape: const StadiumBorder(),
+      contentPadding: const EdgeInsets.only(left: 16, right: 12),
+      leading: Text(
+        slotName(id),
+        style: theme.textTheme.labelLarge?.copyWith(
+          fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+        ),
+      ),
+      title: Text(
+        meta.name.isEmpty ? amp : meta.name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        <String>[
+          if (meta.rating > 0) '${meta.rating}/5',
+          if (meta.name.isNotEmpty) amp,
+          _summary(draft, id),
+        ].join(' · '),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.bodySmall,
+      ),
+      trailing: changed.contains(id)
+          ? Tooltip(
+              message: 'Differs from the pedal',
+              child: Icon(
+                Icons.circle,
+                size: 10,
+                color: theme.colorScheme.primary,
+              ),
+            )
+          : null,
+      onTap: () => workspace.select(id),
+    );
+  }
+}
+
+/// Opens the filter; filled while a filter is on.
+class FilterButton extends StatelessWidget {
+  const FilterButton({super.key, required this.library});
+  final PresetLibrary library;
+
+  @override
+  Widget build(BuildContext context) => library.filtering
+      ? IconButton.filledTonal(
+          tooltip: 'Filter presets (on)',
+          onPressed: () => showMetaFilter(context, library),
+          icon: const Icon(Icons.filter_alt),
+        )
+      : IconButton(
+          tooltip: 'Filter presets',
+          onPressed: () => showMetaFilter(context, library),
+          icon: const Icon(Icons.filter_alt_outlined),
+        );
 }
 
 class _Detail extends StatelessWidget {
@@ -511,6 +583,16 @@ class _Detail extends StatelessWidget {
   void _edit(void Function() change) {
     change();
     workspace.edited();
+  }
+
+  List<int> get _pickable => <int>[
+    for (int i = 0; i < presetCount; i++)
+      if (i == id || workspace.library.matches(i)) i,
+  ];
+
+  String _pickerLabel(int i) {
+    final String name = workspace.library.metas[i].name;
+    return name.isEmpty ? slotName(i) : '${slotName(i)}  $name';
   }
 
   Future<void> _copy(BuildContext context) async {
@@ -563,9 +645,16 @@ class _Detail extends StatelessWidget {
                 value: id,
                 underline: const SizedBox(),
                 style: theme.textTheme.headlineSmall,
+                // Names in the open list; the slot alone once picked.
+                selectedItemBuilder: (_) => <Widget>[
+                  for (final int i in _pickable) Text(slotName(i)),
+                ],
                 items: <DropdownMenuItem<int>>[
-                  for (int i = 0; i < presetCount; i++)
-                    DropdownMenuItem<int>(value: i, child: Text(slotName(i))),
+                  for (final int i in _pickable)
+                    DropdownMenuItem<int>(
+                      value: i,
+                      child: Text(_pickerLabel(i)),
+                    ),
                 ],
                 onChanged: (int? v) => workspace.select(v!),
               )
@@ -590,6 +679,7 @@ class _Detail extends StatelessWidget {
                     )
                   : const SizedBox(),
             ),
+            if (showPicker) FilterButton(library: workspace.library),
             IconButton(
               tooltip: 'Ask the assistant',
               onPressed: enabled
@@ -619,6 +709,16 @@ class _Detail extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 860),
+          child: MetaCard(
+            key: ValueKey<int>(id),
+            library: workspace.library,
+            id: id,
+            enabled: enabled,
+          ),
+        ),
+        const SizedBox(height: 16),
         Align(
           alignment: Alignment.centerLeft,
           child: ConstrainedBox(
