@@ -733,7 +733,8 @@ class _Detail extends StatelessWidget {
     );
   }
 
-  Widget _volume() => _LabeledSlider(
+  Widget _volume({bool labelAbove = false}) => _LabeledSlider(
+    labelAbove: labelAbove,
     label: 'Preset volume',
     value: draft.volume(id),
     max: 100,
@@ -772,7 +773,7 @@ class _Detail extends StatelessWidget {
           ),
       ],
     ),
-    if (compact) _volume(),
+    if (compact) _volume(labelAbove: true),
     const SizedBox(height: 16),
     _ChainRow(
       draft: draft,
@@ -1262,12 +1263,16 @@ class _LabeledSlider extends StatelessWidget {
     required this.onChanged,
     this.min = 0,
     this.dense = false,
+    this.labelAbove = false,
   });
   final String label;
   final int value;
   final int min;
   final int max;
   final bool dense;
+
+  /// The label on its own line, so the slider takes the whole width.
+  final bool labelAbove;
   final ValueChanged<int>? onChanged;
 
   @override
@@ -1277,12 +1282,13 @@ class _LabeledSlider extends StatelessWidget {
     // brings it back into range.
     final int top = value > max ? value : max;
     final int bottom = value < min ? value : min;
-    return Row(
+    // Knob and EQ sliders follow the volume's layout on a phone.
+    final bool above =
+        labelAbove || (dense && MediaQuery.sizeOf(context).width < 600);
+    final Widget text = Text(label, style: theme.textTheme.bodyMedium);
+    final Widget row = Row(
       children: <Widget>[
-        SizedBox(
-          width: dense ? 84 : 120,
-          child: Text(label, style: theme.textTheme.bodyMedium),
-        ),
+        if (!above) SizedBox(width: dense ? 84 : 120, child: text),
         Expanded(
           child: Slider(
             value: value.toDouble(),
@@ -1308,5 +1314,11 @@ class _LabeledSlider extends StatelessWidget {
         ),
       ],
     );
+    return above
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[text, row],
+          )
+        : row;
   }
 }
