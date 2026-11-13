@@ -46,7 +46,7 @@ To check the installed version on the pedal itself, hold **Home** and press **>*
 
 ### Pocket AMP clones
 
-The same pedal is sold under other brands, and each reports its own name. The app keeps a list of names confirmed to be a Pocket AMP. A listed clone is detected as *NAME (Pocket AMP)* and can get the Pocket AMP firmware after a separate confirmation. A pedal that is not on the list is refused, because a different pedal that speaks the same protocol (an M-VAVE FM-1, for example) would be bricked by it.
+The same pedal is sold under other brands, and each reports its own name. The app keeps a list of names confirmed to be a Pocket AMP. A listed clone is detected as *NAME (Pocket AMP)* and can get the Pocket AMP firmware after a separate confirmation. A pedal that is not on the list never gets a firmware update, because a different pedal that speaks the same protocol (an M-VAVE FM-1, for example) would be bricked by it. If its preset area reads like a Pocket AMP's, it is detected as *presets only*: backups, presets and raw copies work, updates do not.
 
 | Clone | Reports | Status |
 | --- | --- | --- |
@@ -59,7 +59,7 @@ Have a clone that is not listed? Open the app, copy the log from **Details**, an
 Know before you cross-flash a clone:
 
 - afterwards the pedal reports itself as a Pocket AMP, and there may be no firmware of the original brand to go back to;
-- older clone firmware (PIXIE1 V0.07) keeps presets in the same layout but has no EQ table and cannot read past P79. The app keeps a raw copy (`raw-<pedal>-<date>.bin` in `Documents/Pocket AMP Tools`) and asks before continuing; after the update, **P01 to P79 can be restored** from it (the result card or **Backups**). P80 and the EQ stay as the new firmware has them. A raw copy in any other layout is not restored;
+- older clone firmware (PIXIE1 V0.07) keeps presets in the same layout but has no EQ table and cannot read past P79. The app keeps a raw copy (`raw-<pedal>-<date>.bin` in `Documents/Pocket AMP Tools`) and asks before continuing; after the update, **P01 to P79 can be restored** from it (the result card or **Backups**). P80 and the EQ stay as the new firmware has them. A raw copy in any other layout is not restored. Reading presets on that firmware shows P01 to P79 without the EQ, to view only: writing to it was never tested;
 - after updating from V0.07, M-VAVE says to switch to Speaker mode and load the Speaker mode preset in M-EFCS to get sound.
 
 ### "Already runs this version"
@@ -84,7 +84,9 @@ Each preset can also have a **name, description, genres, usage, tags and a 1 to 
 
 **Ask the assistant** (the ✨ button on a preset) sends your request and the preset to an AI service you choose: any address that speaks the OpenAI chat-completions format, with your own model and key (kept on your computer in plain text, readable only by you on Linux and macOS). The answer goes into the editor, is checked like a backup file, and is heard live; nothing is stored until you write.
 
-The **Cabinets** section lists the 20 CAB slots and puts your own IR in one: WAV, 44.1 kHz, mono, 24-bit, 2048 samples (the one format whose upload was measured). This writes to the pedal's flash, and the IR that was in the slot is gone for good: the app cannot read IRs back. That an uploaded IR survives turning the pedal off is not yet confirmed.
+The **Cabinets** section lists the 20 CAB slots and puts your own IR in one: WAV, 44.1 kHz, mono, 24-bit, 2048 samples (the one format whose upload was measured). This writes to the pedal's flash and survives turning the pedal off. The IR that was in the slot is gone for good: firmware V1.05 has no way to read an IR back, and, from its code, it seems to keep only the first 1024 of the 2048 samples it is sent. So the app keeps its own copy of every IR it sends, in `Documents/Pocket AMP Tools/IRs` (one per slot, named `cab-NN--name.wav`), and the slot shows **Restore copy…** to send it again. IRs put there by the factory or another app have no copy.
+
+The same section switches to the 20 **AMP** slots and puts an amp capture in one, in the two formats firmware V1.05 takes: an `.am3` capture with the `LMT` block M-EFCS adds when it sends one (6272 bytes; a bare 6204-byte `.am3` is refused, the app cannot compute that block yet), or a model in the pedal's own `NAM` format (7548 or 7836 bytes). That format is a fixed small network, not the `.nam` files shared on Tone3000 or by the NAM project: those must be converted first. Copies of the captures the app sends are kept in `Documents/Pocket AMP Tools/Amps`.
 
 The **Backups** section lists the backups the app keeps in `Documents/Pocket AMP Tools` (one is taken automatically before each firmware update), and opens or restores any of them. Backups made when the app was called Pocket AMP Upgrader stay in `Documents/Pocket AMP Upgrader` and are listed too. On macOS the app runs in a sandbox, so that `Documents` folder is the app's own: `~/Library/Containers/io.github.vitoramaral10.pocketAmpUpgrader/Data/Documents`.
 
@@ -184,6 +186,10 @@ The Pocket AMP runs on a JieLi AC791N, the same chip as the M-VAVE FM-1, and use
 - a request for address `0xE0000000` ends the loader phase and `0xF0000000` ends the flash phase; both are answered with `success\0`, and the pedal restarts.
 
 The USB-MIDI transport is native on each system: ALSA rawmidi on Linux, WinMM on Windows (each SysEx send waits for the driver to finish with the buffer) and CoreMIDI on macOS (through [flutter_midi_command](https://pub.dev/packages/flutter_midi_command)).
+
+## Error reports
+
+Release builds ask once whether they may send error reports to Sentry. They are off until you agree, and the bug button at the top changes the answer. A report holds the error, the recent log lines, the app version, the system, and the pedal and firmware names; after each firmware update, one more says how it ended, so the pedals that update well are known. Presets, files and your user name are not sent, and your IP address is not stored. Builds without `--dart-define=SENTRY_DSN=...` have no reporting and never ask.
 
 ## Building
 
