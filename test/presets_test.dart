@@ -453,6 +453,28 @@ void main() {
     await s.close();
   });
 
+  test('a PIXIE1 V0.07 raw copy opens P01..P79 to view only', () async {
+    final Uint8List raw = File('test/fixtures/raw-PIXIE1_007.bin')
+        .readAsBytesSync();
+    final PresetBackup b = PresetBackup.oldLayout('PIXIE1_007', raw);
+    expect(b.usableCount, 79);
+    expect(b.presets.sublist(0, 7268), raw.sublist(0, 7268));
+    expect(b.copy().oldLayout, isTrue);
+    expect(b.toJson, throwsStateError);
+    final FakeBank pedal = FakeBank(bank());
+    final PresetSession s = PresetSession(pedal);
+    await expectLater(
+      restorePresetBank(s, b),
+      throwsA(isA<PresetIoException>()),
+    );
+    expect(pedal.writes, isEmpty);
+    await s.close();
+    expect(
+      () => PresetBackup.oldLayout('x', raw.sublist(0, 7000)),
+      throwsFormatException,
+    );
+  });
+
   test('a raw copy in another layout is refused', () {
     final Uint8List raw = File('test/fixtures/raw-PIXIE1_007.bin')
         .readAsBytesSync();
