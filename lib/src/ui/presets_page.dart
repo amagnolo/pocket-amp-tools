@@ -126,6 +126,12 @@ class PresetWorkspace extends ChangeNotifier {
     }
     draft = b.copy();
     source = from;
+    if (b.oldLayout) {
+      selected = selected.clamp(0, b.usableCount - 1);
+      if (openBlock == eqBlock) {
+        openBlock = 1;
+      }
+    }
     showOnPedal();
     notifyListeners();
   }
@@ -290,6 +296,7 @@ class PresetsMenu extends StatelessWidget {
     builder: (BuildContext context, _) {
       final bool idle = !busy;
       final bool loaded = workspace.draft != null;
+      final bool editable = loaded && !workspace.draft!.oldLayout;
       return MenuAnchor(
         builder: (BuildContext context, MenuController menu, _) => IconButton(
           tooltip: presetActions ? 'Preset actions' : 'More',
@@ -305,7 +312,7 @@ class PresetsMenu extends StatelessWidget {
             ),
             MenuItemButton(
               leadingIcon: const Icon(Icons.save_alt),
-              onPressed: idle && loaded ? onSave : null,
+              onPressed: idle && editable ? onSave : null,
               child: const Text('Save file…'),
             ),
             MenuItemButton(
@@ -321,7 +328,7 @@ class PresetsMenu extends StatelessWidget {
             ),
             MenuItemButton(
               leadingIcon: const Icon(Icons.content_paste),
-              onPressed: idle && loaded ? () => _paste(context) : null,
+              onPressed: idle && editable ? () => _paste(context) : null,
               child: const Text('Paste preset from JSON'),
             ),
             const Divider(),
@@ -571,7 +578,7 @@ class _Editor extends StatelessWidget {
           workspace: workspace,
           draft: draft,
           id: workspace.selected,
-          enabled: !busy,
+          enabled: !busy && !draft.oldLayout,
           showPicker: box.maxWidth < 760,
         );
         if (box.maxWidth < 760) {
@@ -619,7 +626,7 @@ class _PresetList extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     return ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: presetCount,
+      itemCount: draft.usableCount,
       itemExtent: 60,
       itemBuilder: (BuildContext context, int id) {
         final bool selected = id == workspace.selected;
@@ -727,7 +734,7 @@ class _Detail extends StatelessWidget {
             underline: const SizedBox(),
             style: theme.textTheme.headlineSmall,
             items: <DropdownMenuItem<int>>[
-              for (int i = 0; i < presetCount; i++)
+              for (int i = 0; i < draft.usableCount; i++)
                 DropdownMenuItem<int>(value: i, child: Text(slotName(i))),
             ],
             onChanged: (int? v) => workspace.select(v!),
@@ -838,9 +845,10 @@ class _ChainRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
-          if (eqHead) eq,
+          // Older clone firmware has no EQ.
+          if (eqHead && !draft.oldLayout) eq,
           Flexible(child: _blocks(theme, order)),
-          if (!eqHead) eq,
+          if (!eqHead && !draft.oldLayout) eq,
         ],
       ),
     );

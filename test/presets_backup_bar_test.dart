@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -44,6 +45,38 @@ Future<void> _show(
 }
 
 void main() {
+  testWidgets('older clone firmware shows P01..P79 without EQ, read only', (
+    t,
+  ) async {
+    final Uint8List raw = File('test/fixtures/raw-PIXIE1_007.bin')
+        .readAsBytesSync();
+    final PresetWorkspace w = PresetWorkspace()
+      ..open(PresetWorkspace.eqBlock)
+      ..select(79)
+      ..load(
+        PresetBackup.oldLayout('PIXIE1_007', raw),
+        'pedal',
+        fromPedal: true,
+      );
+    await _show(t, w, () {});
+
+    expect(w.selected, 78);
+    expect(w.openBlock, isNot(PresetWorkspace.eqBlock));
+    await t.scrollUntilVisible(
+      find.text('P79'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('P80'), findsNothing);
+    expect(find.text('EQ'), findsNothing);
+    expect(
+      t
+          .widgetList<Slider>(find.byType(Slider))
+          .every((Slider s) => s.onChanged == null),
+      isTrue,
+    );
+  });
+
   testWidgets('a backup in the editor is marked and can be restored', (
     t,
   ) async {
