@@ -91,12 +91,22 @@ class _BackupsPageState extends State<BackupsPage> {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final bool compact = MediaQuery.sizeOf(context).width < 600;
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
       children: <Widget>[
-        Row(
+        Flex(
+          // On a phone the button goes under the text instead of squeezing it.
+          direction: compact ? Axis.vertical : Axis.horizontal,
+          crossAxisAlignment: compact
+              ? CrossAxisAlignment.start
+              : CrossAxisAlignment.center,
+          spacing: 12,
           children: <Widget>[
-            Expanded(
+            // flex 0 lays it out at its own height inside the list.
+            Flexible(
+              flex: compact ? 0 : 1,
+              fit: FlexFit.tight,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
