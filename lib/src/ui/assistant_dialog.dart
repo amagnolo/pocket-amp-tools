@@ -72,16 +72,26 @@ class _AssistantDialogState extends State<_AssistantDialog> {
     });
     try {
       final Map<String, Object> current = draft.presetFields(id);
+      // An EQ record in a form the app cannot write back (its card offers
+      // only a reset) stays as stored; the rest of the preset is still
+      // the assistant's to change.
+      bool keepEq = false;
       try {
         // Checked before asking: a preset the editor cannot take back would
         // waste the request and the user's tokens.
         draft.copy().setPresetFields(id, current);
       } on FormatException catch (e) {
-        _show(
-          'The assistant cannot edit ${slotName(id)}: it holds values this '
-          'app cannot write (${e.message}).',
-        );
-        return;
+        try {
+          draft.copy().setPresetFields(id, current, keepEq: true);
+          keepEq = true;
+          current.remove('eq');
+        } on FormatException {
+          _show(
+            'The assistant cannot edit ${slotName(id)}: it holds values this '
+            'app cannot write (${e.message}).',
+          );
+          return;
+        }
       }
       final Map<String, Object?> answer = await askAssistant(
         _settings!,
@@ -91,7 +101,11 @@ class _AssistantDialogState extends State<_AssistantDialog> {
       if (!mounted || !identical(w.draft, draft) || w.selected != id) {
         return; // the editor moved on meanwhile
       }
-      draft.setPresetFields(id, mergeSuggestion(current, answer));
+      draft.setPresetFields(
+        id,
+        mergeSuggestion(current, answer),
+        keepEq: keepEq,
+      );
       w.edited();
       w.showOnPedal();
       if (mounted) {

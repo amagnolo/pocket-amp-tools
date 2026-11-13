@@ -185,7 +185,9 @@ Future<Map<String, Object?>> askAssistant(
           <String, String>{
             'role': 'user',
             'content':
-                'Request: $request\n\nCurrent preset:\n${jsonEncode(current)}',
+                'Request: $request\n\nCurrent preset:\n${jsonEncode(current)}'
+                // Left out by the caller when it cannot be written back.
+                '${current.containsKey('eq') ? '' : '\n\nThis preset\'s EQ cannot be changed: leave "eq" out of the answer.'}',
           },
         ],
       });

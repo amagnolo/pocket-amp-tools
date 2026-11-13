@@ -167,6 +167,56 @@ void main() {
     );
   });
 
+  test('an EQ the app cannot write back stays, the rest still changes', () {
+    // P01's EQ as some pedals store it: position 128, bands past ±6.
+    final Uint8List area = demoBank()
+      ..setAll(eqTableAddress + eqHeaderLength, <int>[
+        1,
+        0x80,
+        3,
+        0x78,
+        1,
+        0xBC,
+        0x1E,
+      ]);
+    final PresetBackup b = PresetBackup(
+      identity: 'Pocket AMP_105',
+      created: DateTime.utc(2026),
+      presets: Uint8List.sublistView(area, 0, eqTableAddress),
+      eq: Uint8List.sublistView(area, eqTableAddress),
+    );
+    final Uint8List eqBefore = Uint8List.fromList(b.eqRecord(0));
+    final Map<String, Object> current = b.presetFields(0);
+    expect(() => b.copy().setPresetFields(0, current), throwsFormatException);
+    current.remove('eq');
+    final Map<String, Object?> merged = mergeSuggestion(
+      current,
+      <String, Object?>{
+        'volume': 12,
+        'eq': <String, Object>{'on': false},
+      },
+    );
+    b.setPresetFields(0, merged, keepEq: true);
+    expect(b.volume(0), 12);
+    expect(b.eqRecord(0), eqBefore);
+  });
+
+  test('a preset sent without its EQ tells the model to leave it', () async {
+    late String sent;
+    final Map<String, Object> current = _bank().presetFields(0)..remove('eq');
+    await http.runWithClient(
+      () => askAssistant(_settings, 'x', current),
+      () => MockClient((http.Request r) async {
+        sent = r.body;
+        return http.Response(
+          '{"choices":[{"message":{"content":"{\\"volume\\": 1}"}}]}',
+          200,
+        );
+      }),
+    );
+    expect(sent, contains('EQ cannot be changed'));
+  });
+
   test('a hostile answer neither hangs nor fills memory', () async {
     final Stopwatch clock = Stopwatch()..start();
     expect(firstJsonObject('{' * 200000), isNull);

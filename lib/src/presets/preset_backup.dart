@@ -164,13 +164,21 @@ class PresetBackup {
   Map<String, Object> presetFields(int id) => _readable(id);
 
   /// Replaces preset [id] and its EQ with [fields], in the shape of
-  /// [presetFields]; the "preset" key, if any, is ignored.
-  void setPresetFields(int id, Map<String, Object?> fields) {
+  /// [presetFields]; the "preset" key, if any, is ignored. With [keepEq] the
+  /// stored EQ record stays as it is and "eq" is not read: for a record in
+  /// a form the app cannot write back.
+  void setPresetFields(
+    int id,
+    Map<String, Object?> fields, {
+    bool keepEq = false,
+  }) {
     final _Reader r = _Reader(_slot(id), strict: true);
     final Uint8List body = r.preset(fields);
-    final Uint8List record = r.eq(fields['eq'], 'eq');
+    final Uint8List? record = keepEq ? null : r.eq(fields['eq'], 'eq');
     presets.setAll(id * presetSize, body);
-    eq.setAll(_eqAt(id), record);
+    if (record != null) {
+      eq.setAll(_eqAt(id), record);
+    }
   }
 
   /// Every preset as plain fields. Holds every byte of the preset and of its
