@@ -44,7 +44,9 @@ class BackupsPage extends StatefulWidget {
 class _BackupsPageState extends State<BackupsPage> {
   late Future<List<(File, PresetBackup?, String?)>> _files = widget.list();
 
-  void _reload() => setState(() => _files = widget.list());
+  void _reload() => setState(() {
+        _files = widget.list();
+      });
 
   @override
   Widget build(BuildContext context) {
