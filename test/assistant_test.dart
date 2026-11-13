@@ -13,6 +13,7 @@ import 'package:pocket_amp_tools/src/library/library.dart';
 import 'package:pocket_amp_tools/src/presets/mefcs.dart';
 import 'package:pocket_amp_tools/src/presets/nam_file.dart';
 import 'package:pocket_amp_tools/src/presets/preset_backup.dart';
+import 'package:pocket_amp_tools/src/presets/preset_meta.dart';
 import 'package:flutter/painting.dart';
 import 'package:pocket_amp_tools/src/ui/assistant_panel.dart';
 import 'package:pocket_amp_tools/src/ui/assistant_tools.dart';
@@ -524,6 +525,77 @@ void main() {
         ),
       );
       expect(h.did.where((String d) => d == 'write'), hasLength(1));
+    });
+
+    test('preset details are read, set and checked', () async {
+      final _Host h = _Host(_bank());
+      final List<AssistantTool> tools = assistantTools(h);
+      final AssistantTool set = _tool(tools, 'set_preset_details');
+      expect(
+        await set.run(<String, Object?>{
+          'preset': 'P03',
+          'name': ' Glassy Clean ',
+          'genres': <Object?>['blues', 'Shoegaze'],
+          'rating': 4,
+        }),
+        <String, Object?>{
+          'preset': 'P03',
+          'name': 'Glassy Clean',
+          // An offered label keeps its spelling; a new one joins the list.
+          'genres': <String>['Blues', 'Shoegaze'],
+          'rating': 4,
+        },
+      );
+      final PresetDetails details = h.workspace.details;
+      expect(details.labels[MetaCategory.genres], contains('Shoegaze'));
+      expect(
+        (await _tool(tools, 'list_presets').run(<String, Object?>{})
+            as List<String>)[2],
+        endsWith(
+          ', named "Glassy Clean", 4 of 5 stars, labels: Blues, Shoegaze',
+        ),
+      );
+      expect(
+        await _tool(
+          tools,
+          'get_preset',
+        ).run(<String, Object?>{'preset': 'P03'}),
+        containsPair('details', containsPair('name', 'Glassy Clean')),
+      );
+      expect(
+        await _tool(
+          tools,
+          'get_preset',
+        ).run(<String, Object?>{'preset': 'P04'}),
+        isNot(contains('details')),
+      );
+      // The pedal's presets are untouched.
+      expect(h.workspace.changed, isEmpty);
+
+      // A bad value changes nothing, not even the good ones beside it.
+      await expectLater(
+        set.run(<String, Object?>{'preset': 'P03', 'name': 'x', 'rating': 9}),
+        throwsA(isA<ToolError>()),
+      );
+      await expectLater(
+        set.run(<String, Object?>{'preset': 'P03'}),
+        throwsA(isA<ToolError>()),
+      );
+      expect(details.metas[2].name, 'Glassy Clean');
+      // Without presets loaded there is nothing to describe.
+      final _Host empty = _Host(_bank())..workspace.draft = null;
+      await expectLater(
+        _tool(
+          assistantTools(empty),
+          'set_preset_details',
+        ).run(<String, Object?>{'rating': 5}),
+        throwsA(isA<ToolError>()),
+      );
+      expect(empty.workspace.details.metas[0].isEmpty, isTrue);
+      // An empty list clears; what was not given stays.
+      await set.run(<String, Object?>{'preset': 'P03', 'genres': <Object?>[]});
+      expect(details.metas[2].labels[MetaCategory.genres], isEmpty);
+      expect(details.metas[2].rating, 4);
     });
 
     test('the read tools describe presets, models, slots and files', () async {

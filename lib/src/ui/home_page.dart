@@ -116,6 +116,7 @@ class _HomePageState extends State<HomePage> implements AssistantHost {
     _updater = PedalUpdater(backend, log: _addLog);
     _presets = PresetService(backend);
     _lifecycle = AppLifecycleListener(onExitRequested: _onExitRequested);
+    _workspace.details.open();
     // Detection only sends the identity query, so it is safe to run unasked.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       unawaited(_detect());
@@ -215,6 +216,11 @@ class _HomePageState extends State<HomePage> implements AssistantHost {
 
   /// Closing the window mid-transfer is the easiest way to brick a pedal.
   Future<AppExitResponse> _onExitRequested() async {
+    // A name or rating typed just before closing is still being written.
+    await _workspace.details.saved;
+    if (!mounted) {
+      return AppExitResponse.exit;
+    }
     if (_stage != _Stage.updating && _presetTask == null) {
       if (_workspace.unsaved.isEmpty) {
         return AppExitResponse.exit;

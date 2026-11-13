@@ -15,6 +15,7 @@ import '../presets/ir_upload.dart';
 import '../presets/nam_file.dart';
 import '../presets/mefcs.dart';
 import '../presets/preset_backup.dart';
+import '../presets/preset_meta.dart';
 import 'presets_page.dart';
 
 /// What the tools need from the app.
@@ -89,13 +90,18 @@ List<AssistantTool> assistantTools(AssistantHost host) {
           for (final int id in w().changed.toList()..sort()) _name(id),
         ],
         'heard_live_on_pedal': w().live != null,
+        'labels_for_preset_details': <String, Object?>{
+          for (final MetaCategory c in MetaCategory.values)
+            c.name: w().details.offered(c),
+        },
       },
     ),
     AssistantTool(
       name: 'list_presets',
       description:
-          'One line per preset (P01..P80): AMP and CAB in use and the blocks '
-          'that are on. Use get_preset for the details of one.',
+          'One line per preset (P01..P80): AMP and CAB in use, the blocks '
+          'that are on, and the name, rating and labels the user gave it. '
+          'Use get_preset for the details of one.',
       parameters: _object(<String, Object?>{}),
       annotations: const ToolAnnotations(title: 'List presets', readOnly: true),
       run: (_) async {
@@ -110,7 +116,8 @@ List<AssistantTool> assistantTools(AssistantHost host) {
       description:
           'One preset in full: volume, chain, each block (on, model, knobs '
           'by name) and the EQ. AMP and CAB also show the name of what their '
-          'slot holds on the pedal.',
+          'slot holds on the pedal. "details" is what the user wrote about '
+          'it in the app: name, description, genres, uses, tags, rating.',
       parameters: _object(<String, Object?>{'preset': _presetArg}),
       annotations: const ToolAnnotations(
         title: 'Read a preset',
@@ -131,7 +138,9 @@ List<AssistantTool> assistantTools(AssistantHost host) {
             'on_pedal': w().modelLabel(b, d.model(id, blockNames.indexOf(b))),
           };
         }
+        final PresetMeta meta = w().details.metas[id];
         return <String, Object?>{
+          if (!meta.isEmpty) 'details': meta.toJson(),
           ...f,
           'blocks': blocks,
           'eq_guide': eqGuide,
@@ -280,8 +289,99 @@ List<AssistantTool> assistantTools(AssistantHost host) {
       },
     ),
     AssistantTool(
+      name: 'set_preset_details',
+      description:
+          'Sets what the user keeps about a preset in the app (it is never '
+          'stored on the pedal): name, description, genres, uses, tags and '
+          'a rating of 1 to 5 stars. Give only what changes. A list replaces '
+          'the old one; an empty text, an empty list or rating 0 clears. '
+          'Prefer the labels get_state lists; a new one joins the user\'s '
+          'list.',
+      parameters: _object(<String, Object?>{
+        'preset': _presetArg,
+        'name': <String, Object?>{'type': 'string'},
+        'description': <String, Object?>{'type': 'string'},
+        for (final MetaCategory c in MetaCategory.values)
+          c.name: <String, Object?>{
+            'type': 'array',
+            'items': <String, Object?>{'type': 'string'},
+          },
+        'rating': <String, Object?>{
+          'type': 'integer',
+          'minimum': 0,
+          'maximum': 5,
+        },
+      }),
+      annotations: const ToolAnnotations(title: 'Set preset details'),
+      describe: (Map<String, Object?> a) =>
+          'Set the details of ${a['preset'] ?? 'the open preset'}',
+      run: (Map<String, Object?> a) async {
+        // As with the tools that read them: no presets, nothing to describe.
+        draft();
+        final int id = idOf(a['preset']);
+        // Everything is checked before anything changes.
+        final Object? name = a['name'];
+        final Object? description = a['description'];
+        final Object? rating = a['rating'];
+        if (name is! String? || description is! String?) {
+          throw const ToolError('name and description must be text.');
+        }
+        if (rating != null &&
+            (rating is! num ||
+                rating != rating.round() ||
+                rating < 0 ||
+                rating > 5)) {
+          throw const ToolError('rating must be a whole number, 0 to 5.');
+        }
+        final Map<MetaCategory, List<String>> labels =
+            <MetaCategory, List<String>>{};
+        for (final MetaCategory c in MetaCategory.values) {
+          final Object? v = a[c.name];
+          if (v == null) {
+            continue;
+          }
+          if (v is! List || v.any((Object? e) => e is! String)) {
+            throw ToolError('${c.name} must be a list of text.');
+          }
+          labels[c] = <String>[
+            for (final Object? e in v)
+              if ((e! as String).trim().isNotEmpty) e as String,
+          ];
+        }
+        if (name == null &&
+            description == null &&
+            rating == null &&
+            labels.isEmpty) {
+          throw const ToolError('Nothing to change was given.');
+        }
+        final PresetDetails details = w().details;
+        final PresetMeta m = details.metas[id];
+        if (name != null) {
+          m.name = name.trim();
+        }
+        if (description != null) {
+          m.description = description.trim();
+        }
+        if (rating is num) {
+          m.rating = rating.round();
+        }
+        labels.forEach((MetaCategory c, List<String> l) {
+          m.labels[c]!
+            ..clear()
+            ..addAll(<String>[
+              for (final String x in l) details.useLabel(c, x),
+            ]);
+        });
+        details.changed();
+        return <String, Object?>{'preset': _name(id), ...m.toJson()};
+      },
+    ),
+    AssistantTool(
       name: 'copy_preset',
-      description: 'Copies a whole preset over another one in the editor.',
+      description:
+          'Copies a preset\'s sound (volume, chain, blocks, EQ) over another '
+          'one in the editor. The target keeps the name, description, rating '
+          'and labels the user gave it; say so.',
       parameters: _object(
         <String, Object?>{
           'from': _presetArg,
@@ -656,8 +756,15 @@ String _summary(PresetWorkspace w, PresetBackup d, int id) {
     for (final int b in d.chain(id))
       if (b < blockNames.length && d.isOn(id, b)) blockNames[b],
   ];
+  final PresetMeta m = w.details.metas[id];
+  final List<String> labels = <String>[
+    for (final MetaCategory c in MetaCategory.values) ...m.labels[c]!,
+  ];
   return '${_name(id)}: AMP $amp, CAB $cab, on: '
-      '${on.isEmpty ? 'none' : on.join(' > ')}';
+      '${on.isEmpty ? 'none' : on.join(' > ')}'
+      '${m.name.isEmpty ? '' : ', named "${m.name}"'}'
+      '${m.rating == 0 ? '' : ', ${m.rating} of 5 stars'}'
+      '${labels.isEmpty ? '' : ', labels: ${labels.join(', ')}'}';
 }
 
 /// What a library capture says about itself; nothing if it cannot be read.

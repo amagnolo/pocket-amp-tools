@@ -11,12 +11,23 @@ import '../presets/block_models.dart';
 import '../presets/live_link.dart';
 import '../presets/mefcs.dart';
 import '../presets/preset_backup.dart';
+import '../presets/preset_meta.dart';
+import 'preset_meta_widgets.dart';
 import 'settings_page.dart';
 import 'visuals.dart';
 
 /// The bank being edited and the bank last seen on the pedal, kept while the
 /// user moves between sections.
 class PresetWorkspace extends ChangeNotifier {
+  /// What the user wrote about each slot; kept by the app, not the pedal.
+  final PresetDetails details = PresetDetails();
+
+  @override
+  void dispose() {
+    details.dispose();
+    super.dispose();
+  }
+
   /// Last read from, or written to, the pedal. Null until presets are read.
   PresetBackup? onPedal;
 
@@ -238,7 +249,7 @@ class PresetsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: workspace,
+      listenable: Listenable.merge(<Listenable>[workspace, workspace.details]),
       builder: (BuildContext context, _) {
         final PresetBackup? draft = workspace.draft;
         return Column(
@@ -584,11 +595,17 @@ class _Editor extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Set<int> changed = workspace.changed;
+    // The slots the filter lets through, in order.
+    final List<int> shown = <int>[
+      for (int id = 0; id < draft.usableCount; id++)
+        if (workspace.details.matches(id)) id,
+    ];
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints box) {
         final _Detail detail = _Detail(
           workspace: workspace,
           draft: draft,
+          shown: shown,
           id: workspace.selected,
           enabled: !busy && !draft.oldLayout,
           showPicker: box.maxWidth < 760,
@@ -604,6 +621,7 @@ class _Editor extends StatelessWidget {
               child: _PresetList(
                 workspace: workspace,
                 draft: draft,
+                shown: shown,
                 changed: changed,
               ),
             ),
@@ -616,8 +634,9 @@ class _Editor extends StatelessWidget {
   }
 }
 
-/// One line per preset: AMP model, the blocks that are on, and a dot when it
-/// differs from the pedal.
+/// One line per preset the filter lets through: its name (the AMP model until
+/// it has one), its rating, the blocks that are on, and a dot when it differs
+/// from the pedal.
 List<String> _onBlocks(PresetBackup d, int id) => <String>[
   for (final int b in d.chain(id))
     if (b < blockNames.length && d.isOn(id, b)) blockNames[b],
@@ -627,20 +646,66 @@ class _PresetList extends StatelessWidget {
   const _PresetList({
     required this.workspace,
     required this.draft,
+    required this.shown,
     required this.changed,
   });
   final PresetWorkspace workspace;
   final PresetBackup draft;
+  final List<int> shown;
   final Set<int> changed;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final PresetDetails details = workspace.details;
+    final TextStyle? quiet = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.only(left: 16, right: 4, top: 4),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  details.filtering
+                      ? '${shown.length} of ${draft.usableCount} presets'
+                      : '${draft.usableCount} presets',
+                  style: quiet,
+                ),
+              ),
+              if (details.filtering)
+                IconButton(
+                  tooltip: 'Clear the filter',
+                  onPressed: details.clearFilter,
+                  icon: const Icon(Icons.filter_list_off),
+                ),
+              FilterButton(details: details, count: draft.usableCount),
+            ],
+          ),
+        ),
+        Expanded(
+          child: shown.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text('No preset matches the filter.', style: quiet),
+                )
+              : _list(theme, details),
+        ),
+      ],
+    );
+  }
+
+  Widget _list(ThemeData theme, PresetDetails details) {
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: draft.usableCount,
+      padding: const EdgeInsets.only(bottom: 8),
+      itemCount: shown.length,
       itemExtent: 60,
-      itemBuilder: (BuildContext context, int id) {
+      itemBuilder: (BuildContext context, int row) {
+        final int id = shown[row];
+        final PresetMeta meta = details.metas[id];
         final bool selected = id == workspace.selected;
         return ListTile(
           selected: selected,
@@ -654,13 +719,22 @@ class _PresetList extends StatelessWidget {
             ),
           ),
           title: Text(
-            workspace.modelLabel('AMP', draft.model(id, 1)),
+            meta.name.isEmpty
+                ? workspace.modelLabel('AMP', draft.model(id, 1))
+                : meta.name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
           subtitle: Text.rich(
             TextSpan(
               children: <InlineSpan>[
+                if (meta.rating > 0) ...<InlineSpan>[
+                  const WidgetSpan(
+                    alignment: PlaceholderAlignment.middle,
+                    child: Icon(Icons.star, size: 14),
+                  ),
+                  TextSpan(text: ' ${meta.rating}  '),
+                ],
                 for (final String b in _onBlocks(draft, id)) ...<InlineSpan>[
                   WidgetSpan(
                     alignment: PlaceholderAlignment.middle,
@@ -674,7 +748,10 @@ class _PresetList extends StatelessWidget {
                 ],
               ],
             ),
-            semanticsLabel: _onBlocks(draft, id).join(', '),
+            semanticsLabel: <String>[
+              if (meta.rating > 0) '${meta.rating} of 5 stars',
+              ..._onBlocks(draft, id),
+            ].join(', '),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodySmall,
@@ -700,12 +777,14 @@ class _Detail extends StatelessWidget {
   const _Detail({
     required this.workspace,
     required this.draft,
+    required this.shown,
     required this.id,
     required this.enabled,
     required this.showPicker,
   });
   final PresetWorkspace workspace;
   final PresetBackup draft;
+  final List<int> shown;
   final int id;
   final bool enabled;
   final bool showPicker;
@@ -728,10 +807,35 @@ class _Detail extends StatelessWidget {
           math.max(24, (box.maxWidth - 1040) / 2),
           32,
         ),
-        children: _children(context, theme, open, box.maxWidth < 600),
+        children: _children(
+          context,
+          theme,
+          open,
+          box.maxWidth < 600,
+          // Room for the summary beside the volume.
+          box.maxWidth >= 840,
+        ),
       ),
     );
   }
+
+  List<int> get _pickable => <int>[
+    for (int i = 0; i < draft.usableCount; i++)
+      if (i == id || shown.contains(i)) i,
+  ];
+
+  String _pickerLabel(int i) {
+    final String name = workspace.details.metas[i].name;
+    return name.isEmpty ? slotName(i) : '${slotName(i)}  $name';
+  }
+
+  PresetMeta get _meta => workspace.details.metas[id];
+
+  void _editDetails(BuildContext context) =>
+      showMetaEditor(context, workspace.details, id, slotName(id));
+
+  Widget _summary(BuildContext context) =>
+      MetaSummary(meta: _meta, onEdit: () => _editDetails(context));
 
   Widget _volume({bool labelAbove = false}) => _LabeledSlider(
     labelAbove: labelAbove,
@@ -746,6 +850,7 @@ class _Detail extends StatelessWidget {
     ThemeData theme,
     int open,
     bool compact,
+    bool summaryInline,
   ) => <Widget>[
     Row(
       children: <Widget>[
@@ -754,26 +859,69 @@ class _Detail extends StatelessWidget {
             value: id,
             underline: const SizedBox(),
             style: theme.textTheme.headlineSmall,
+            // Wide enough for the names; the closed button shows no name.
+            menuWidth: 320,
+            // The open preset stays pickable when the filter hides it.
             items: <DropdownMenuItem<int>>[
-              for (int i = 0; i < draft.usableCount; i++)
-                DropdownMenuItem<int>(value: i, child: Text(slotName(i))),
+              for (final int i in _pickable)
+                DropdownMenuItem<int>(
+                  value: i,
+                  child: Text(
+                    _pickerLabel(i),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            ],
+            // Closed, it shows the slot alone: a name would not fit.
+            selectedItemBuilder: (BuildContext context) => <Widget>[
+              for (final int i in _pickable)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text(slotName(i)),
+                ),
             ],
             onChanged: (int? v) => workspace.select(v!),
           ),
         // The list beside it already names the preset; volume takes the room.
         // On a phone the picker leaves too little, so it gets its own line.
+        if (summaryInline)
+          Expanded(
+            flex: 3,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 24),
+              child: _summary(context),
+            ),
+          ),
         if (!compact)
           Expanded(
+            flex: 4,
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 600),
                 child: _volume(),
               ),
             ),
+          )
+        else
+          const Spacer(),
+        // Without the list, its filter button comes here.
+        if (showPicker)
+          FilterButton(details: workspace.details, count: draft.usableCount),
+        // With nothing to sum up, the way in sits with the picker's buttons
+        // and takes no line of its own.
+        if (showPicker && _meta.isEmpty)
+          IconButton(
+            tooltip: MetaSummary.editTooltip,
+            onPressed: () => _editDetails(context),
+            icon: const Icon(Icons.edit_note),
           ),
+        // As wide as the summary, so the volume stays in the middle.
+        if (summaryInline) const Spacer(flex: 3),
       ],
     ),
     if (compact) _volume(labelAbove: true),
+    if (!summaryInline && !(showPicker && _meta.isEmpty)) _summary(context),
     // Tighter on a phone, so the last knob stays above the navigation bar.
     SizedBox(height: compact ? 8 : 16),
     _ChainRow(
