@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -8,7 +10,11 @@ import '../assistant/providers.dart';
 
 /// The app's settings, one card per subject.
 class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key});
+  const SettingsPage({super.key, this.log});
+
+  /// The session log; null where it is not at hand (the assistant panel).
+  /// shortcut: a snapshot when the page opens, lines added later need a reopen.
+  final List<String>? log;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -22,6 +28,16 @@ class SettingsPage extends StatelessWidget {
             child: const AssistantSettingsCard(),
           ),
         ),
+        if (log != null)
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 640),
+              child: Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: LogCard(lines: log!),
+              ),
+            ),
+          ),
       ],
     ),
   );
@@ -42,6 +58,7 @@ class _AssistantSettingsCardState extends State<AssistantSettingsCard> {
 
   /// An [AiProvider.id], or empty for a custom address.
   String _provider = '';
+  bool _autoWrite = false;
   bool _loaded = false;
   bool _saving = false;
 
@@ -61,6 +78,7 @@ class _AssistantSettingsCardState extends State<AssistantSettingsCard> {
                 .firstOrNull
                 ?.id ??
             '';
+        _autoWrite = s.autoWrite;
         _url.text = s.baseUrl;
         _model.text = s.model;
         _key.text = s.apiKey;
@@ -82,6 +100,7 @@ class _AssistantSettingsCardState extends State<AssistantSettingsCard> {
     baseUrl: _url.text,
     model: _model.text,
     apiKey: _key.text,
+    autoWrite: _autoWrite,
   );
 
   /// Picking a provider fills its address and default model; both stay
@@ -196,6 +215,18 @@ class _AssistantSettingsCardState extends State<AssistantSettingsCard> {
                   ),
                   if (provider != null && provider.keyUrl.isNotEmpty)
                     _KeyLink(url: provider.keyUrl),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: _autoWrite,
+                    onChanged: (bool v) => setState(() => _autoWrite = v),
+                    title: const Text('Write to the pedal without asking'),
+                    subtitle: const Text(
+                      'Off: the assistant asks before it sends a file to a '
+                      'slot or writes presets. On: it does them on its own; '
+                      'a slot it replaces is lost for good.',
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   Align(
                     alignment: Alignment.centerRight,
@@ -246,6 +277,58 @@ class _KeyLink extends StatelessWidget {
               }
             },
             icon: const Icon(Icons.copy),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The session log, copied whole into bug reports.
+class LogCard extends StatelessWidget {
+  const LogCard({super.key, required this.lines});
+  final List<String> lines;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
+        initiallyExpanded: true,
+        title: const Text('Log'),
+        subtitle: Text('${lines.length} log lines'),
+        children: <Widget>[
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: lines.isEmpty
+                  ? null
+                  : () => Clipboard.setData(
+                      ClipboardData(
+                        text:
+                            '${Platform.operatingSystem} '
+                            '${Platform.operatingSystemVersion}\n'
+                            '${lines.join('\n')}',
+                      ),
+                    ),
+              icon: const Icon(Icons.copy, size: 18),
+              label: const Text('Copy for a bug report'),
+            ),
+          ),
+          Container(
+            width: double.infinity,
+            constraints: const BoxConstraints(maxHeight: 240),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: SingleChildScrollView(
+              reverse: true,
+              child: SelectableText(
+                lines.join('\n'),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ),
           ),
         ],
       ),
