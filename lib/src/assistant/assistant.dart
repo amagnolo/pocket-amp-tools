@@ -152,7 +152,7 @@ Future<Map<String, Object?>> askAssistant(
 ) async {
   if (!settings.ready) {
     throw const AssistantException(
-      'Set the assistant address and model first.',
+      'Choose the assistant\'s service and model in Settings first.',
     );
   }
   if (settings.keyWouldLeakInClear) {
@@ -200,27 +200,78 @@ Future<Map<String, Object?>> askAssistant(
   } catch (e) {
     throw AssistantException('Could not reach the assistant: $e');
   }
-  if (status == 401 || status == 403) {
-    throw const AssistantException('The assistant refused the API key.');
-  }
   if (status != 200) {
-    throw AssistantException(
-      'The assistant answered HTTP $status. Check the address and the '
-      'model name.',
-    );
+    // Each service words its own errors; theirs says what to fix.
+    final String? said = serviceError(bytes);
+    final String why = said == null ? '' : ' It said: $said';
+    throw AssistantException(switch (status) {
+      401 || 403 => 'The service refused the API key.$why',
+      404 => 'The service does not know this address or model.$why',
+      429 =>
+        'The service is rate-limiting this key, or its credit ran '
+            'out.$why',
+      _ => 'The service answered HTTP $status.$why',
+    });
   }
-  final Map<String, Object?>? preset;
+  final Object? body;
   try {
-    preset = firstJsonObject(_content(jsonDecode(utf8.decode(bytes))));
+    body = jsonDecode(utf8.decode(bytes));
   } on FormatException {
     throw const AssistantException(
-      'The assistant did not answer in the chat-completions format.',
+      'The service did not answer in the chat-completions format.',
     );
   }
+  final Map<String, Object?>? preset = firstJsonObject(_content(body));
   if (preset == null) {
-    throw const AssistantException('The assistant did not answer a preset.');
+    throw AssistantException(
+      _finishReason(body) == 'length'
+          ? 'The answer was cut off before the preset was complete. Try a '
+                'model that writes less, or one without long reasoning.'
+          : 'The assistant did not answer a preset.',
+    );
   }
   return preset;
+}
+
+/// The error message in a service's error body, in the shapes they use:
+/// `{"error": {"message": …}}`, `{"error": "…"}` or `{"message": …}`.
+/// Cut short: it goes into one line on screen.
+String? serviceError(List<int> bytes) {
+  Object? j;
+  try {
+    j = jsonDecode(utf8.decode(bytes, allowMalformed: true));
+  } on FormatException {
+    return null;
+  }
+  if (j is List && j.isNotEmpty) {
+    j = j.first; // Gemini wraps its error in a list
+  }
+  if (j is! Map) {
+    return null;
+  }
+  final Object? error = j['error'];
+  final Object? text = error is Map
+      ? error['message']
+      : error is String
+      ? error
+      : j['message'];
+  if (text is! String || text.trim().isEmpty) {
+    return null;
+  }
+  final String t = text.trim();
+  return t.length > 300 ? '${t.substring(0, 300)}…' : t;
+}
+
+String? _finishReason(Object? body) {
+  if (body is! Map) {
+    return null;
+  }
+  final Object? choices = body['choices'];
+  if (choices is! List || choices.isEmpty || choices.first is! Map) {
+    return null;
+  }
+  final Object? r = (choices.first as Map)['finish_reason'];
+  return r is String ? r : null;
 }
 
 /// The text of a chat-completions answer: `content` as a string, or as a

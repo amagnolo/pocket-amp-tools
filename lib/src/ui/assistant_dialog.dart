@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../assistant/assistant.dart';
+import '../assistant/providers.dart';
 import '../presets/preset_backup.dart';
 import 'presets_page.dart';
 import 'settings_page.dart';
@@ -145,8 +146,8 @@ class _AssistantDialogState extends State<_AssistantDialog> {
                 children: <Widget>[
                   if (!_settings!.ready) ...<Widget>[
                     Text(
-                      'The assistant needs a service to ask. Set its address '
-                      'and model in Settings.',
+                      'The assistant needs a service to ask. Choose one, its '
+                      'model and your API key in Settings.',
                       style: theme.textTheme.bodyMedium,
                     ),
                     Align(
@@ -174,11 +175,29 @@ class _AssistantDialogState extends State<_AssistantDialog> {
                     const SizedBox(height: 8),
                     Text(
                       'The request and this preset are sent to the service '
-                      'set in Settings. The answer replaces the preset in the '
-                      'editor; nothing is stored on the pedal until you write.',
+                      'below. The answer replaces the preset in the editor; '
+                      'nothing is stored on the pedal until you write.',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            '${aiProvider(_settings!.provider)?.name ?? _settings!.baseUrl.trim()}'
+                            ' · ${_settings!.model.trim()}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.labelLarge,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _asking ? null : _openSettings,
+                          child: const Text('Change'),
+                        ),
+                      ],
                     ),
                   ],
                   if (_error != null)

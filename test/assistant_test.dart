@@ -113,6 +113,60 @@ void main() {
     );
   });
 
+  Future<String> failure(http.Response answer) async {
+    try {
+      await http.runWithClient(
+        () => askAssistant(_settings, 'x', _bank().presetFields(0)),
+        () => MockClient((_) async => answer),
+      );
+    } on AssistantException catch (e) {
+      return e.message;
+    }
+    fail('no error');
+  }
+
+  test("each service's own error words are passed on", () async {
+    // OpenAI and most others, Gemini (in a list), and a bare string.
+    expect(
+      await failure(
+        http.Response('{"error":{"message":"model x not found"}}', 404),
+      ),
+      allOf(contains('does not know'), contains('model x not found')),
+    );
+    expect(
+      await failure(http.Response('[{"error":{"message":"quota"}}]', 429)),
+      allOf(contains('rate-limiting'), contains('quota')),
+    );
+    expect(
+      await failure(http.Response('{"error":"bad model"}', 400)),
+      allOf(contains('HTTP 400'), contains('bad model')),
+    );
+    expect(await failure(http.Response('<html>', 500)), endsWith('HTTP 500.'));
+    expect(
+      serviceError(utf8.encode('{"message":"${'a' * 400}"}')),
+      hasLength(301),
+    );
+  });
+
+  test('an answer cut off by the token limit says so', () async {
+    expect(
+      await failure(
+        http.Response(
+          jsonEncode(<String, Object>{
+            'choices': <Object>[
+              <String, Object>{
+                'message': <String, Object>{'content': '{"volume": 5'},
+                'finish_reason': 'length',
+              },
+            ],
+          }),
+          200,
+        ),
+      ),
+      contains('cut off'),
+    );
+  });
+
   test('a hostile answer neither hangs nor fills memory', () async {
     final Stopwatch clock = Stopwatch()..start();
     expect(firstJsonObject('{' * 200000), isNull);
