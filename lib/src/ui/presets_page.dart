@@ -276,7 +276,9 @@ class PresetsMenu extends StatelessWidget {
     required this.onOpen,
     required this.onSave,
     required this.onAbout,
+    this.log,
     this.presetActions = true,
+    this.appBarItems = const <Widget>[],
   });
   final PresetWorkspace workspace;
   final bool busy;
@@ -286,9 +288,15 @@ class PresetsMenu extends StatelessWidget {
   final VoidCallback onSave;
   final VoidCallback onAbout;
 
+  /// Shown in Settings.
+  final List<String>? log;
+
   /// Off outside the Presets page, where the menu only holds Settings and
   /// About.
   final bool presetActions;
+
+  /// App bar actions that move into the menu on a compact window.
+  final List<Widget> appBarItems;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -304,6 +312,10 @@ class PresetsMenu extends StatelessWidget {
           icon: const Icon(Icons.more_vert),
         ),
         menuChildren: <Widget>[
+          if (appBarItems.isNotEmpty) ...<Widget>[
+            ...appBarItems,
+            const Divider(),
+          ],
           if (presetActions) ...<Widget>[
             MenuItemButton(
               leadingIcon: const Icon(Icons.folder_open),
@@ -337,7 +349,7 @@ class PresetsMenu extends StatelessWidget {
             leadingIcon: const Icon(Icons.settings_outlined),
             onPressed: () => Navigator.push<void>(
               context,
-              MaterialPageRoute<void>(builder: (_) => const SettingsPage()),
+              MaterialPageRoute<void>(builder: (_) => SettingsPage(log: log)),
             ),
             child: const Text('Settings'),
           ),
@@ -716,15 +728,23 @@ class _Detail extends StatelessWidget {
           math.max(24, (box.maxWidth - 1040) / 2),
           32,
         ),
-        children: _children(context, theme, open),
+        children: _children(context, theme, open, box.maxWidth < 600),
       ),
     );
   }
+
+  Widget _volume() => _LabeledSlider(
+    label: 'Preset volume',
+    value: draft.volume(id),
+    max: 100,
+    onChanged: enabled ? (int v) => _edit(() => draft.setVolume(id, v)) : null,
+  );
 
   List<Widget> _children(
     BuildContext context,
     ThemeData theme,
     int open,
+    bool compact,
   ) => <Widget>[
     Row(
       children: <Widget>[
@@ -740,23 +760,19 @@ class _Detail extends StatelessWidget {
             onChanged: (int? v) => workspace.select(v!),
           ),
         // The list beside it already names the preset; volume takes the room.
-        Expanded(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 600),
-              child: _LabeledSlider(
-                label: 'Preset volume',
-                value: draft.volume(id),
-                max: 100,
-                onChanged: enabled
-                    ? (int v) => _edit(() => draft.setVolume(id, v))
-                    : null,
+        // On a phone the picker leaves too little, so it gets its own line.
+        if (!compact)
+          Expanded(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 600),
+                child: _volume(),
               ),
             ),
           ),
-        ),
       ],
     ),
+    if (compact) _volume(),
     const SizedBox(height: 16),
     _ChainRow(
       draft: draft,
@@ -828,6 +844,17 @@ class _ChainRow extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final List<int> order = draft.chain(id);
     final bool eqHead = draft.eqAtHead(id);
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints box) {
+        // Chips shrink to share the width; below 72 the row scrolls.
+        final int n = order.length + 1;
+        final double width = ((box.maxWidth - 8 * n) / n).clamp(72, 132);
+        return _row(theme, order, eqHead, width);
+      },
+    );
+  }
+
+  Widget _row(ThemeData theme, List<int> order, bool eqHead, double width) {
     // EQ is not dragged: its place is the Head/Tail switch on its card.
     final Widget eq = Padding(
       padding: const EdgeInsets.only(right: 8),
@@ -838,6 +865,7 @@ class _ChainRow extends StatelessWidget {
         selected: open == PresetWorkspace.eqBlock,
         onTap: () => onOpen(PresetWorkspace.eqBlock),
         theme: theme,
+        width: width,
       ),
     );
     return SizedBox(
@@ -847,50 +875,52 @@ class _ChainRow extends StatelessWidget {
         children: <Widget>[
           // Older clone firmware has no EQ.
           if (eqHead && !draft.oldLayout) eq,
-          Flexible(child: _blocks(theme, order)),
+          Flexible(child: _blocks(theme, order, width)),
           if (!eqHead && !draft.oldLayout) eq,
         ],
       ),
     );
   }
 
-  Widget _blocks(ThemeData theme, List<int> order) => ReorderableListView(
-    shrinkWrap: true,
-    scrollDirection: Axis.horizontal,
-    // The default desktop handle is an icon drawn over the chip's text;
-    // the whole chip is the handle instead.
-    buildDefaultDragHandles: false,
-    onReorderItem: (int from, int to) {
-      final List<int> next = List<int>.of(order);
-      next.insert(to, next.removeAt(from));
-      onReorder(next);
-    },
-    children: <Widget>[
-      for (final (int i, int b) in order.indexed)
-        Padding(
-          // A block normally appears once; the count keeps keys unique
-          // if a stored chain repeats one.
-          key: ValueKey<int>(
-            b + 256 * order.take(i).where((int x) => x == b).length,
-          ),
-          padding: const EdgeInsets.only(right: 8),
-          child: _dragHandle(
-            index: i,
-            enabled: enabled,
-            child: _ChainChip(
-              name: b < blockNames.length ? blockNames[b] : 'Block $b',
-              model: b < blockNames.length
-                  ? label(blockNames[b], draft.model(id, b))
-                  : '',
-              on: b < blockNames.length && draft.isOn(id, b),
-              selected: b == open,
-              onTap: b < blockNames.length ? () => onOpen(b) : null,
-              theme: theme,
+  Widget _blocks(ThemeData theme, List<int> order, double width) =>
+      ReorderableListView(
+        shrinkWrap: true,
+        scrollDirection: Axis.horizontal,
+        // The default desktop handle is an icon drawn over the chip's text;
+        // the whole chip is the handle instead.
+        buildDefaultDragHandles: false,
+        onReorderItem: (int from, int to) {
+          final List<int> next = List<int>.of(order);
+          next.insert(to, next.removeAt(from));
+          onReorder(next);
+        },
+        children: <Widget>[
+          for (final (int i, int b) in order.indexed)
+            Padding(
+              // A block normally appears once; the count keeps keys unique
+              // if a stored chain repeats one.
+              key: ValueKey<int>(
+                b + 256 * order.take(i).where((int x) => x == b).length,
+              ),
+              padding: const EdgeInsets.only(right: 8),
+              child: _dragHandle(
+                index: i,
+                enabled: enabled,
+                child: _ChainChip(
+                  name: b < blockNames.length ? blockNames[b] : 'Block $b',
+                  model: b < blockNames.length
+                      ? label(blockNames[b], draft.model(id, b))
+                      : '',
+                  on: b < blockNames.length && draft.isOn(id, b),
+                  selected: b == open,
+                  onTap: b < blockNames.length ? () => onOpen(b) : null,
+                  theme: theme,
+                  width: width,
+                ),
+              ),
             ),
-          ),
-        ),
-    ],
-  );
+        ],
+      );
 }
 
 /// Touch drags after a long press so the row still scrolls; a mouse drags
@@ -922,10 +952,12 @@ class _ChainChip extends StatelessWidget {
     required this.selected,
     required this.onTap,
     required this.theme,
+    this.width = 132,
   });
   final String name;
   final String model;
   final bool on;
+  final double width;
 
   /// Its card is the one open below.
   final bool selected;
@@ -944,7 +976,7 @@ class _ChainChip extends StatelessWidget {
         ? Colors.white
         : blockInk(name, theme.brightness) ?? block;
     final Widget chip = Container(
-      width: 132,
+      width: width,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: on ? block : block.withValues(alpha: dark ? 0.22 : 0.14),
@@ -957,8 +989,11 @@ class _ChainChip extends StatelessWidget {
       ),
       child: Row(
         children: <Widget>[
-          BlockIcon(name, size: 28, color: fg),
-          const SizedBox(width: 8),
+          // Narrow chips drop the icon so the name and model still fit.
+          if (width >= 110) ...<Widget>[
+            BlockIcon(name, size: 28, color: fg),
+            const SizedBox(width: 8),
+          ],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
