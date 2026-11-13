@@ -8,6 +8,7 @@ import 'dart:io';
 
 import '../assistant/agent.dart';
 import '../assistant/assistant.dart';
+import '../assistant/pedal_knowledge.dart';
 import '../library/library.dart';
 import '../presets/block_models.dart';
 import '../presets/ir_upload.dart';
@@ -133,6 +134,7 @@ List<AssistantTool> assistantTools(AssistantHost host) {
         return <String, Object?>{
           ...f,
           'blocks': blocks,
+          'eq_guide': eqGuide,
           if (!_eqWritable(d, id))
             'eq_note':
                 'Stored in a form this app cannot change; edits leave '
@@ -143,9 +145,12 @@ List<AssistantTool> assistantTools(AssistantHost host) {
     AssistantTool(
       name: 'list_models',
       description:
-          'The models of one block, each with its knob names, in the order '
-          'they are stored. For AMP and CAB also the name each slot holds on '
-          'the pedal and the library file it came from.',
+          'The models of one block, each with its knob names, what it does '
+          'and the real gear it likely copies (a guess from its name: say so '
+          'when you use it), plus a guide to what the knobs do in dB, Hz or '
+          'seconds. For AMP and CAB also the name each slot holds on the '
+          'pedal and the library file it came from. Read it before choosing '
+          'a model or setting knobs.',
       parameters: _object(
         <String, Object?>{
           'block': <String, Object?>{'type': 'string', 'enum': blockNames},
@@ -160,21 +165,25 @@ List<AssistantTool> assistantTools(AssistantHost host) {
         final Map<int, String> links = kind == null
             ? const <int, String>{}
             : await host.links(kind);
-        return <Map<String, Object?>>[
-          for (final (int i, (String name, _)) in blockModels[block]!.indexed)
-            <String, Object?>{
-              'model': name,
-              'knobs': <String>[
-                for (final String k in knobNames(block, i))
-                  if (!k.startsWith('knob')) k,
-              ],
-              if (kind != null) ...<String, Object?>{
-                'slot': i + 1,
-                'on_pedal': w().modelLabel(block, i),
-                if (links[i] != null) 'library_file': links[i],
+        return <String, Object?>{
+          'knob_guide': blockKnobGuide[block],
+          'models': <Map<String, Object?>>[
+            for (final (int i, (String name, _)) in blockModels[block]!.indexed)
+              <String, Object?>{
+                'model': name,
+                ...?modelInfo[block]?[name]?.toJson(),
+                'knobs': <String>[
+                  for (final String k in knobNames(block, i))
+                    if (!k.startsWith('knob')) k,
+                ],
+                if (kind != null) ...<String, Object?>{
+                  'slot': i + 1,
+                  'on_pedal': w().modelLabel(block, i),
+                  if (links[i] != null) 'library_file': links[i],
+                },
               },
-            },
-        ];
+          ],
+        };
       },
     ),
     AssistantTool(

@@ -7,6 +7,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:pocket_amp_tools/src/assistant/agent.dart';
 import 'package:pocket_amp_tools/src/assistant/assistant.dart';
+import 'package:pocket_amp_tools/src/assistant/pedal_knowledge.dart';
+import 'package:pocket_amp_tools/src/presets/block_models.dart';
 import 'package:pocket_amp_tools/src/library/library.dart';
 import 'package:pocket_amp_tools/src/presets/mefcs.dart';
 import 'package:pocket_amp_tools/src/presets/nam_file.dart';
@@ -531,14 +533,20 @@ void main() {
         await _tool(tools, 'list_presets').run(<String, Object?>{}),
         hasLength(presetCount),
       );
-      final List<Object?> amps =
+      final Map<String, Object?> amp =
           (await _tool(
                 tools,
                 'list_models',
               ).run(<String, Object?>{'block': 'AMP'}))!
-              as List<Object?>;
+              as Map<String, Object?>;
+      expect(amp['knob_guide'], contains('150 Hz'));
+      final List<Object?> amps = amp['models']! as List<Object?>;
       expect(amps.first, containsPair('slot', 1));
       expect(amps[2], containsPair('library_file', 'Mesa 4x12'));
+      expect(
+        amps[2],
+        containsPair('likely_gear (guessed from the name)', contains('JC-120')),
+      );
       expect(
         await _tool(
           tools,
@@ -617,5 +625,15 @@ void main() {
       <String, Object?>{'gear': 'Marshall JCM800'},
     );
     expect(namMetadata('not json'), isEmpty);
+  });
+
+  test('every model of the pedal has a line in the catalog', () {
+    for (final MapEntry<String, List<(String, List<String>)>> b
+        in blockModels.entries) {
+      expect(blockKnobGuide[b.key], isNotNull, reason: b.key);
+      for (final (String name, _) in b.value) {
+        expect(modelInfo[b.key]?[name], isNotNull, reason: '${b.key} $name');
+      }
+    }
   });
 }
