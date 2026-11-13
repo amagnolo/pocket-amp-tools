@@ -110,8 +110,8 @@ const Map<MetaCategory, List<String>> defaultLabels =
 ///
 /// shortcut: one set for every pedal, keyed by slot; key by pedal identity
 /// if people edit several pedals.
-class PresetLibrary extends ChangeNotifier {
-  PresetLibrary();
+class PresetDetails extends ChangeNotifier {
+  PresetDetails();
 
   final List<PresetMeta> metas = <PresetMeta>[
     for (int i = 0; i < presetCount; i++) PresetMeta(),
@@ -135,24 +135,37 @@ class PresetLibrary extends ChangeNotifier {
 
   static Future<File> defaultFile() async => File(
     '${(await getApplicationSupportDirectory()).path}'
-    '${Platform.pathSeparator}preset-library.json',
+    '${Platform.pathSeparator}preset-details.json',
   );
 
   /// Reads [file] (the app's file by default) and saves there from now on.
-  /// A file that cannot be read is left alone and nothing is saved, so it is
-  /// never overwritten with an empty library.
+  /// A file that cannot be read is never overwritten: it is moved aside
+  /// (`….unreadable-<time>`) and a new one is started; if it cannot be moved,
+  /// nothing is saved this session.
   Future<void> open([File? file]) async {
     try {
       final File f = file ?? await defaultFile();
-      if (await f.exists()) {
-        fromJson(jsonDecode(await f.readAsString()));
+      try {
+        // A small file, read in one go so the names are there on the first
+        // frame that shows presets.
+        if (f.existsSync()) {
+          fromJson(jsonDecode(f.readAsStringSync()));
+        }
+      } catch (e) {
+        debugPrint('Preset details not loaded: $e');
+        f.renameSync(
+          '${f.path}.unreadable-${DateTime.now().millisecondsSinceEpoch}',
+        );
       }
       _file = f;
       notifyListeners();
     } catch (e) {
-      debugPrint('Preset library not loaded: $e');
+      debugPrint('Preset details not saved this session: $e');
     }
   }
+
+  /// Completes when every change so far is in the file.
+  Future<void> get saved => _saving;
 
   void fromJson(Object? j) {
     if (j is! Map<String, Object?>) {
@@ -175,7 +188,7 @@ class PresetLibrary extends ChangeNotifier {
   }
 
   Map<String, Object> toJson() => <String, Object>{
-    'format': 'pocket-amp-tools/preset-library@1',
+    'format': 'pocket-amp-tools/preset-details@1',
     'labels': <String, Object>{
       for (final MetaCategory c in MetaCategory.values) c.name: labels[c]!,
     },
@@ -201,7 +214,7 @@ class PresetLibrary extends ChangeNotifier {
         await tmp.writeAsString(text, flush: true);
         await tmp.rename(f.path);
       } catch (e) {
-        debugPrint('Preset library not saved: $e');
+        debugPrint('Preset details not saved: $e');
       }
     });
   }
@@ -216,6 +229,18 @@ class PresetLibrary extends ChangeNotifier {
     labels[c]!.add(l);
     changed();
     return true;
+  }
+
+  /// [typed] as it is spelled among the labels of [c], added if it is new.
+  String useLabel(MetaCategory c, String typed) {
+    final String l = typed.trim();
+    for (final String x in offered(c)) {
+      if (x.toLowerCase() == l.toLowerCase()) {
+        return x;
+      }
+    }
+    addLabel(c, l);
+    return l;
   }
 
   /// Removes [label] from [c], from every preset and from the filter.

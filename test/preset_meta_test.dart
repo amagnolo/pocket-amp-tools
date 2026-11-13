@@ -15,8 +15,8 @@ const MetaCategory g = MetaCategory.genres;
 const MetaCategory u = MetaCategory.uses;
 const MetaCategory t = MetaCategory.tags;
 
-PresetLibrary _sample() {
-  final PresetLibrary l = PresetLibrary();
+PresetDetails _sample() {
+  final PresetDetails l = PresetDetails();
   l.metas[0]
     ..labels[g]!.add('Blues')
     ..labels[u]!.add('Solo')
@@ -49,14 +49,14 @@ PresetLibrary _sample() {
   return l;
 }
 
-List<int> _shown(PresetLibrary l) => <int>[
+List<int> _shown(PresetDetails l) => <int>[
   for (int i = 0; i < l.metas.length; i++)
     if (l.matches(i)) i,
 ];
 
 void main() {
   test('OR within a category, AND across, rating as a floor', () {
-    final PresetLibrary l = _sample();
+    final PresetDetails l = _sample();
     expect(_shown(l), hasLength(80));
     l
       ..setFilter(g, 'Blues', true)
@@ -72,7 +72,7 @@ void main() {
   });
 
   test('removing a label takes it off every preset and the filter', () {
-    final PresetLibrary l = _sample()..setFilter(g, 'Blues', true);
+    final PresetDetails l = _sample()..setFilter(g, 'Blues', true);
     l.removeLabel(g, 'Blues');
     expect(l.labels[g], isNot(contains('Blues')));
     expect(
@@ -83,7 +83,7 @@ void main() {
   });
 
   test('labels are added once, ignoring case and spaces', () {
-    final PresetLibrary l = PresetLibrary();
+    final PresetDetails l = PresetDetails();
     expect(l.addLabel(g, '  Italian Neomelodic '), isTrue);
     expect(l.addLabel(g, 'italian neomelodic'), isFalse);
     expect(l.addLabel(g, '   '), isFalse);
@@ -99,8 +99,8 @@ void main() {
         Future<void>.delayed(const Duration(milliseconds: 200));
 
     test('edits are saved and read back', () async {
-      final File f = File('${dir.path}/preset-library.json');
-      final PresetLibrary a = PresetLibrary();
+      final File f = File('${dir.path}/preset-details.json');
+      final PresetDetails a = PresetDetails();
       await a.open(f);
       a.metas[6]
         ..name = 'British Clean Echo'
@@ -111,7 +111,7 @@ void main() {
       a.changed();
       await settle();
 
-      final PresetLibrary b = PresetLibrary();
+      final PresetDetails b = PresetDetails();
       await b.open(f);
       final PresetMeta m = b.metas[6];
       expect(m.name, 'British Clean Echo');
@@ -127,18 +127,23 @@ void main() {
     });
 
     test('a file it cannot read is never overwritten', () async {
-      final File f = File('${dir.path}/preset-library.json')
+      final File f = File('${dir.path}/preset-details.json')
         ..writeAsStringSync('{not json');
-      final PresetLibrary l = PresetLibrary();
+      final PresetDetails l = PresetDetails();
       await l.open(f);
       l.metas[0].name = 'x';
       l.changed();
-      await settle();
-      expect(f.readAsStringSync(), '{not json');
+      await l.saved;
+      // Moved aside as it was, and a new file takes the edits.
+      final File aside = dir.listSync().whereType<File>().singleWhere(
+        (File x) => x.path.contains('.unreadable-'),
+      );
+      expect(aside.readAsStringSync(), '{not json');
+      expect(f.readAsStringSync(), contains('"name": "x"'));
     });
 
     test('odd values in the file are dropped, not fatal', () async {
-      final File f = File('${dir.path}/preset-library.json')
+      final File f = File('${dir.path}/preset-details.json')
         ..writeAsStringSync(
           jsonEncode(<String, Object?>{
             'labels': <String, Object?>{
@@ -150,7 +155,7 @@ void main() {
             },
           }),
         );
-      final PresetLibrary l = PresetLibrary();
+      final PresetDetails l = PresetDetails();
       await l.open(f);
       expect(l.labels[g], <String>['Blues']);
       expect(l.labels[u], defaultLabels[u]);
@@ -160,12 +165,7 @@ void main() {
     });
   });
 
-  testWidgets('name, rate and filter presets in the editor', (
-    WidgetTester tester,
-  ) async {
-    tester.view.physicalSize = const Size(1400, 1600);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+  PresetWorkspace workspace() {
     final Uint8List bank = demoBank();
     final PresetWorkspace w = PresetWorkspace()
       ..load(
@@ -178,7 +178,14 @@ void main() {
         'x',
       );
     addTearDown(w.dispose);
-    await tester.pumpWidget(
+    return w;
+  }
+
+  Future<void> show(WidgetTester tester, PresetWorkspace w, Size size) {
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    return tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: PresetsPage(
@@ -190,15 +197,18 @@ void main() {
             message: null,
             messageIsError: false,
             onRead: () {},
-            onOpen: () {},
-            onSave: () {},
             onWrite: () {},
-            liveOn: false,
-            onLive: (_) {},
           ),
         ),
       ),
     );
+  }
+
+  testWidgets('name, rate and filter presets in the editor', (
+    WidgetTester tester,
+  ) async {
+    final PresetWorkspace w = workspace();
+    await show(tester, w, const Size(1400, 1000));
 
     // Nothing to show yet, and no form taking room on the page.
     expect(find.widgetWithText(TextField, 'Name'), findsNothing);
@@ -211,20 +221,35 @@ void main() {
     await tester.tap(find.text('Add genre'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(InputChip, 'Blues'));
+    // Typing a label that exists in another case picks it.
+    await tester.enterText(find.widgetWithText(TextField, 'New genre'), 'pop');
+    await tester.tap(find.byTooltip('Add'));
     await tester.tap(find.text('Done').last);
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('4 of 5'));
+    // A change from outside the dialog (the assistant) reaches the field.
+    w.details.metas[0].description = 'Mostly clean.';
+    w.details.changed();
+    await tester.pump();
+    expect(find.widgetWithText(TextField, 'Mostly clean.'), findsOneWidget);
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
-    expect(w.library.metas[0].name, 'British Clean Echo');
-    expect(w.library.metas[0].labels[g], <String>{'Blues'});
-    expect(w.library.metas[0].rating, 4);
-    // The list names the preset after it.
+    final PresetMeta m = w.details.metas[0];
+    expect(m.name, 'British Clean Echo');
+    expect(m.labels[g], <String>{'Blues', 'Pop'});
+    expect(m.rating, 4);
+    expect(
+      w.details.labels[g]!.where((String l) => l.toLowerCase() == 'pop'),
+      <String>['Pop'],
+    );
+    // Naming a preset is not an edit of the pedal's presets.
+    expect(w.changed, isEmpty);
+    // The list names the preset after it, and the page sums it up.
     expect(find.widgetWithText(ListTile, 'British Clean Echo'), findsOneWidget);
-    // The page shows it as a summary.
     expect(find.text('British Clean Echo'), findsNWidgets(2));
-    expect(find.text('Blues'), findsOneWidget);
-    expect(find.byIcon(Icons.star), findsNWidgets(4));
+    expect(find.text('Blues, Pop'), findsOneWidget);
+    // Four in the summary, one beside the rating in the list.
+    expect(find.byIcon(Icons.star), findsNWidgets(5));
     expect(find.text('80 presets'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Filter presets'));
@@ -246,6 +271,59 @@ void main() {
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
     expect(find.text('1 of 80 presets'), findsOneWidget);
+    expect(find.text('P02'), findsNothing);
+
+    // A preset the filter hides stays open; clearing brings the list back.
+    w.select(1);
+    await tester.pump();
+    expect(find.text('P02'), findsNothing);
+    await tester.tap(find.byTooltip('Clear the filter'));
+    await tester.pump();
+    expect(find.text('80 presets'), findsOneWidget);
+    expect(find.text('P02'), findsOneWidget);
+
+    w.details.setMinRating(5);
+    await tester.pump();
+    expect(find.text('No preset matches the filter.'), findsOneWidget);
+  });
+
+  testWidgets('on a phone the picker, the filter and the dialogs fit', (
+    WidgetTester tester,
+  ) async {
+    final PresetWorkspace w = workspace();
+    w.details.metas[4]
+      ..name = 'Deluxe Clean Direct with a rather long name'
+      ..description = 'Warm, smooth clean tone with rolled-off highs.'
+      ..labels[g]!.addAll(<String>['Blues', 'Country', 'Pop'])
+      ..rating = 4;
+    w.select(4);
+    await show(tester, w, const Size(360, 780));
+    // No list here: the summary and the slot picker carry the name.
+    expect(find.byType(ListTile), findsNothing);
+    expect(find.text('Blues, Country, Pop'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Name, labels and rating'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Change'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Filter presets'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilterChip, 'Country'));
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Filter presets (on)'), findsOneWidget);
+
+    // The picker offers what the filter lets through, by slot and name.
+    w.select(0);
+    await tester.pump();
+    await tester.tap(find.text('P01'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('P05  Deluxe Clean'), findsOneWidget);
     expect(find.text('P02'), findsNothing);
   });
 }
