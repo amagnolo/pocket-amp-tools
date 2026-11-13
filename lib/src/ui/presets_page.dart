@@ -774,7 +774,8 @@ class _Detail extends StatelessWidget {
       ],
     ),
     if (compact) _volume(labelAbove: true),
-    const SizedBox(height: 16),
+    // Tighter on a phone, so the last knob stays above the navigation bar.
+    SizedBox(height: compact ? 8 : 16),
     _ChainRow(
       draft: draft,
       id: id,
@@ -798,7 +799,7 @@ class _Detail extends StatelessWidget {
         workspace.live?.chain(order);
       },
     ),
-    const SizedBox(height: 20),
+    SizedBox(height: compact ? 12 : 20),
     Align(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 560),
@@ -1286,39 +1287,47 @@ class _LabeledSlider extends StatelessWidget {
     final bool above =
         labelAbove || (dense && MediaQuery.sizeOf(context).width < 600);
     final Widget text = Text(label, style: theme.textTheme.bodyMedium);
-    final Widget row = Row(
-      children: <Widget>[
-        if (!above) SizedBox(width: dense ? 84 : 120, child: text),
-        Expanded(
-          child: Slider(
-            value: value.toDouble(),
-            min: bottom.toDouble(),
-            max: top.toDouble(),
-            // Ticks only where there are few steps (the EQ bands).
-            divisions: top - bottom <= 20 ? top - bottom : null,
-            label: '$value',
-            onChanged: onChanged == null
-                ? null
-                : (double v) => onChanged!(v.round()),
-          ),
-        ),
-        SizedBox(
-          width: 36,
-          child: Text(
-            '$value',
-            textAlign: TextAlign.end,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+    final Widget number = Text(
+      '$value',
+      textAlign: TextAlign.end,
+      style: theme.textTheme.bodyMedium?.copyWith(
+        fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+      ),
+    );
+    final Widget slider = Slider(
+      value: value.toDouble(),
+      min: bottom.toDouble(),
+      max: top.toDouble(),
+      // Ticks only where there are few steps (the EQ bands).
+      divisions: top - bottom <= 20 ? top - bottom : null,
+      label: '$value',
+      onChanged: onChanged == null ? null : (double v) => onChanged!(v.round()),
+    );
+    if (above) {
+      // Label and value share the top line; the slider keeps its 48 dp
+      // touch height and the whole width.
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              children: <Widget>[
+                Expanded(child: text),
+                number,
+              ],
             ),
           ),
-        ),
+          slider,
+        ],
+      );
+    }
+    return Row(
+      children: <Widget>[
+        SizedBox(width: dense ? 84 : 120, child: text),
+        Expanded(child: slider),
+        SizedBox(width: 36, child: number),
       ],
     );
-    return above
-        ? Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[text, row],
-          )
-        : row;
   }
 }
