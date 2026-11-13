@@ -126,6 +126,12 @@ class PresetWorkspace extends ChangeNotifier {
     }
     draft = b.copy();
     source = from;
+    if (b.oldLayout) {
+      selected = selected.clamp(0, b.usableCount - 1);
+      if (openBlock == eqBlock) {
+        openBlock = 1;
+      }
+    }
     showOnPedal();
     notifyListeners();
   }
@@ -298,6 +304,7 @@ class PresetsMenu extends StatelessWidget {
     builder: (BuildContext context, _) {
       final bool idle = !busy;
       final bool loaded = workspace.draft != null;
+      final bool editable = loaded && !workspace.draft!.oldLayout;
       return MenuAnchor(
         builder: (BuildContext context, MenuController menu, _) => IconButton(
           tooltip: presetActions ? 'Preset actions' : 'More',
@@ -317,7 +324,7 @@ class PresetsMenu extends StatelessWidget {
             ),
             MenuItemButton(
               leadingIcon: const Icon(Icons.save_alt),
-              onPressed: idle && loaded ? onSave : null,
+              onPressed: idle && editable ? onSave : null,
               child: const Text('Save file…'),
             ),
             MenuItemButton(
@@ -333,7 +340,7 @@ class PresetsMenu extends StatelessWidget {
             ),
             MenuItemButton(
               leadingIcon: const Icon(Icons.content_paste),
-              onPressed: idle && loaded ? () => _paste(context) : null,
+              onPressed: idle && editable ? () => _paste(context) : null,
               child: const Text('Paste preset from JSON'),
             ),
             const Divider(),
@@ -583,7 +590,7 @@ class _Editor extends StatelessWidget {
           workspace: workspace,
           draft: draft,
           id: workspace.selected,
-          enabled: !busy,
+          enabled: !busy && !draft.oldLayout,
           showPicker: box.maxWidth < 760,
         );
         if (box.maxWidth < 760) {
@@ -631,7 +638,7 @@ class _PresetList extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     return ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: presetCount,
+      itemCount: draft.usableCount,
       itemExtent: 60,
       itemBuilder: (BuildContext context, int id) {
         final bool selected = id == workspace.selected;
@@ -721,15 +728,23 @@ class _Detail extends StatelessWidget {
           math.max(24, (box.maxWidth - 1040) / 2),
           32,
         ),
-        children: _children(context, theme, open),
+        children: _children(context, theme, open, box.maxWidth < 600),
       ),
     );
   }
+
+  Widget _volume() => _LabeledSlider(
+    label: 'Preset volume',
+    value: draft.volume(id),
+    max: 100,
+    onChanged: enabled ? (int v) => _edit(() => draft.setVolume(id, v)) : null,
+  );
 
   List<Widget> _children(
     BuildContext context,
     ThemeData theme,
     int open,
+    bool compact,
   ) => <Widget>[
     Row(
       children: <Widget>[
@@ -739,29 +754,25 @@ class _Detail extends StatelessWidget {
             underline: const SizedBox(),
             style: theme.textTheme.headlineSmall,
             items: <DropdownMenuItem<int>>[
-              for (int i = 0; i < presetCount; i++)
+              for (int i = 0; i < draft.usableCount; i++)
                 DropdownMenuItem<int>(value: i, child: Text(slotName(i))),
             ],
             onChanged: (int? v) => workspace.select(v!),
           ),
         // The list beside it already names the preset; volume takes the room.
-        Expanded(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 600),
-              child: _LabeledSlider(
-                label: 'Preset volume',
-                value: draft.volume(id),
-                max: 100,
-                onChanged: enabled
-                    ? (int v) => _edit(() => draft.setVolume(id, v))
-                    : null,
+        // On a phone the picker leaves too little, so it gets its own line.
+        if (!compact)
+          Expanded(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 600),
+                child: _volume(),
               ),
             ),
           ),
-        ),
       ],
     ),
+    if (compact) _volume(),
     const SizedBox(height: 16),
     _ChainRow(
       draft: draft,
@@ -862,9 +873,10 @@ class _ChainRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
-          if (eqHead) eq,
+          // Older clone firmware has no EQ.
+          if (eqHead && !draft.oldLayout) eq,
           Flexible(child: _blocks(theme, order, width)),
-          if (!eqHead) eq,
+          if (!eqHead && !draft.oldLayout) eq,
         ],
       ),
     );

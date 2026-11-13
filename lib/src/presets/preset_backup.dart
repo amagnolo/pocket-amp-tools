@@ -15,6 +15,7 @@ class PresetBackup {
     required this.created,
     required this.presets,
     required this.eq,
+    this.oldLayout = false,
   }) {
     if (presets.length != presetCount * presetSize ||
         eq.length != eqTableLength) {
@@ -82,6 +83,27 @@ class PresetBackup {
     );
   }
 
+  /// P01..P79 read from a pedal on older clone firmware ([isOldPresetArea]),
+  /// which has no EQ table and does not answer past [oldFirmwareReadable].
+  /// Only for viewing: the EQ table is a flat filler, P80 is cut short, and
+  /// writing to that firmware was never tested, so it is neither restored
+  /// nor saved to a file.
+  factory PresetBackup.oldLayout(String identity, Uint8List area) {
+    if (!isOldPresetArea(area)) {
+      throw const FormatException(
+        'This raw copy is not in the layout of PIXIE1 V0.07.',
+      );
+    }
+    return PresetBackup(
+      identity: identity,
+      created: DateTime.now(),
+      presets: Uint8List(presetCount * presetSize)
+        ..setRange(0, oldFirmwareReadable, area),
+      eq: Uint8List(eqTableLength)..setAll(0, eqHeader),
+      oldLayout: true,
+    );
+  }
+
   static const String format = 'pocket-amp-upgrader/presets@3';
   static const String formatV2 = 'pocket-amp-upgrader/presets@2';
   static const String formatV1 = 'pocket-amp-upgrader/presets@1';
@@ -90,6 +112,12 @@ class PresetBackup {
   final DateTime created;
   final Uint8List presets;
   final Uint8List eq;
+
+  /// See [PresetBackup.oldLayout].
+  final bool oldLayout;
+
+  /// Presets that hold real data: P80 is cut short in [oldLayout].
+  int get usableCount => oldLayout ? oldPresetCount : presetCount;
 
   Uint8List preset(int id) =>
       Uint8List.sublistView(presets, id * presetSize, (id + 1) * presetSize);
@@ -120,6 +148,7 @@ class PresetBackup {
     created: created,
     presets: Uint8List.fromList(presets),
     eq: Uint8List.fromList(eq),
+    oldLayout: oldLayout,
   );
 
   // --- editing, by preset id and block position ---------------------------
@@ -218,23 +247,24 @@ class PresetBackup {
     };
   }
 
-  String toJson() =>
-      const JsonEncoder.withIndent('  ').convert(<String, Object>{
-        'format': format,
-        'pedal': identity,
-        'created': created.toUtc().toIso8601String(),
-        'about':
-            'The app restores from these fields: edit a value and restore the '
-            'file to change it on the pedal. Model names follow firmware '
-            'V1.05. Each block lists its six stored knob values in order; '
-            'the "label" only says what the knob is and is not read back, so '
-            'the position decides which knob a value goes to. Labels marked '
-            'unused are values the model does not use. Block names follow '
-            'the order on the screen and are not confirmed for every '
-            'position.',
-        'models': modelListId,
-        'presets': readable,
-      });
+  String toJson() => oldLayout
+      ? throw StateError('An old-firmware bank is not saved to a file.')
+      : const JsonEncoder.withIndent('  ').convert(<String, Object>{
+          'format': format,
+          'pedal': identity,
+          'created': created.toUtc().toIso8601String(),
+          'about':
+              'The app restores from these fields: edit a value and restore the '
+              'file to change it on the pedal. Model names follow firmware '
+              'V1.05. Each block lists its six stored knob values in order; '
+              'the "label" only says what the knob is and is not read back, so '
+              'the position decides which knob a value goes to. Labels marked '
+              'unused are values the model does not use. Block names follow '
+              'the order on the screen and are not confirmed for every '
+              'position.',
+          'models': modelListId,
+          'presets': readable,
+        });
 
   String get suggestedFileName {
     String two(int v) => v.toString().padLeft(2, '0');
@@ -550,6 +580,12 @@ Future<PresetDiff> restorePresetBank(
   void Function(String step, double fraction)? onProgress,
   PresetBackup? expected,
 }) async {
+  if (backup.oldLayout) {
+    throw const PresetIoException(
+      'Presets read from older clone firmware are only shown, never written '
+      'back. Nothing was written to the pedal.',
+    );
+  }
   final PresetBackup before = await readPresetBank(
     session,
     backup.identity,

@@ -633,6 +633,7 @@ class _HomePageState extends State<HomePage> implements AssistantHost {
         p == null ||
         p.inLoader ||
         _workspace.onPedal == null ||
+        _workspace.onPedal!.oldLayout || // never tested writing to it
         _stage == _Stage.updating) {
       return;
     }
@@ -719,7 +720,7 @@ class _HomePageState extends State<HomePage> implements AssistantHost {
   }
 
   Future<void> _readPresetsNow() => _runPresetTask('Reading presets', () async {
-    final PresetBackup b;
+    PresetBackup b;
     try {
       b = await _presets.backup(
         _pedal!,
@@ -727,6 +728,18 @@ class _HomePageState extends State<HomePage> implements AssistantHost {
       );
     } on UnknownPresetLayout catch (e) {
       final File raw = await PresetService.keepRaw(_pedal!.identity, e.area);
+      if (isOldPresetArea(e.area)) {
+        b = PresetBackup.oldLayout(_pedal!.identity, e.area);
+        _workspace.load(
+          b,
+          'Read from ${_pedal!.identity} at '
+          '${b.created.toLocal().toString().substring(11, 16)}',
+          fromPedal: true,
+        );
+        return 'Read P01-P79. This firmware has no EQ and cannot read P80, '
+            'so both are left out; its presets are only shown, not edited. '
+            'Raw copy kept at ${raw.path}.';
+      }
       throw PresetIoException(
         'Presets are not in the Pocket AMP layout (${e.message}). '
         'Raw copy kept at ${raw.path}.',
