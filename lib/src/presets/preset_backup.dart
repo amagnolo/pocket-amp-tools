@@ -17,6 +17,7 @@ class PresetBackup {
     required this.presets,
     required this.eq,
     this.oldLayout = false,
+    this.details,
   }) {
     if (presets.length != presetCount * presetSize ||
         eq.length != eqTableLength) {
@@ -40,12 +41,15 @@ class PresetBackup {
     }
     final String identity = j['pedal'] as String? ?? '?';
     final DateTime created = DateTime.parse(j['created'] as String);
+    final Object? d = j['details'];
+    final Map<String, Object?>? details = d is Map<String, Object?> ? d : null;
     if (j['format'] == formatV1) {
       return PresetBackup(
         identity: identity,
         created: created,
         presets: base64Decode(j['presets'] as String),
         eq: base64Decode(j['eq'] as String),
+        details: details,
       );
     }
     final Object? names = j['models'];
@@ -81,6 +85,7 @@ class PresetBackup {
       created: created,
       presets: presets,
       eq: eq,
+      details: details,
     );
   }
 
@@ -117,6 +122,10 @@ class PresetBackup {
   /// See [PresetBackup.oldLayout].
   final bool oldLayout;
 
+  /// Names, labels and ratings (`PresetDetails.toJson`) saved along with the
+  /// presets; null when the file has none.
+  Map<String, Object?>? details;
+
   /// Presets that hold real data: P80 is cut short in [oldLayout].
   int get usableCount => oldLayout ? oldPresetCount : presetCount;
 
@@ -150,6 +159,7 @@ class PresetBackup {
     presets: Uint8List.fromList(presets),
     eq: Uint8List.fromList(eq),
     oldLayout: oldLayout,
+    details: details,
   );
 
   // --- editing, by preset id and block position ---------------------------
@@ -268,6 +278,7 @@ class PresetBackup {
               'position.',
           'models': modelListId,
           'presets': readable,
+          'details': ?details,
         });
 
   String get suggestedFileName {
