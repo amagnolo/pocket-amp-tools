@@ -520,10 +520,13 @@ Future<void> _copyPreset(
   PresetWorkspace workspace,
 ) async {
   final int id = workspace.selected;
+  final PresetMeta meta = workspace.details.metas[id];
   await Clipboard.setData(
     ClipboardData(
-      text: const JsonEncoder.withIndent('  ')
-          .convert(workspace.draft!.presetFields(id)),
+      text: const JsonEncoder.withIndent('  ').convert(<String, Object>{
+        ...workspace.draft!.presetFields(id),
+        if (!meta.isEmpty) 'details': meta.toJson(),
+      }),
     ),
   );
   if (context.mounted) {
@@ -547,6 +550,12 @@ Future<void> _pastePreset(
       throw const FormatException('expected one preset as a JSON object');
     }
     workspace.draft!.setPresetFields(id, j);
+    // Without "details" (copied before they existed, or none set) the slot
+    // keeps its own.
+    if (j['details'] != null) {
+      workspace.details.metas[id] = PresetMeta.fromJson(j['details']);
+      workspace.details.changed();
+    }
     workspace.edited();
     workspace.showOnPedal();
     done =
