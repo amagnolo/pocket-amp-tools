@@ -10,6 +10,7 @@ import 'package:pocket_amp_tools/src/ota_protocol.dart';
 import 'package:pocket_amp_tools/src/presets/block_models.dart';
 import 'package:pocket_amp_tools/src/presets/mefcs.dart';
 import 'package:pocket_amp_tools/src/presets/preset_backup.dart';
+import 'package:pocket_amp_tools/src/presets/preset_meta.dart';
 import 'package:pocket_amp_tools/src/presets/preset_session.dart';
 
 import 'support/fake_pedal.dart';
@@ -236,6 +237,22 @@ void main() {
     final PresetBackup back = PresetBackup.fromJson(b.toJson());
     expect(back.presets, b.presets);
     expect(back.eq, b.eq);
+  });
+
+  test('preset details travel in the backup file, and are optional', () {
+    final PresetBackup b = PresetBackup(
+      identity: 'x',
+      created: DateTime.utc(2026),
+      presets: Uint8List(presetCount * presetSize),
+      eq: Uint8List(eqTableLength)..setAll(0, eqHeader),
+    );
+    expect(PresetBackup.fromJson(b.toJson()).details, isNull);
+    final PresetDetails mine = PresetDetails()..metas[2].name = 'Crunch';
+    b.details = mine.toJson();
+    final PresetDetails theirs = PresetDetails()
+      ..fromJson(PresetBackup.fromJson(b.toJson()).details);
+    expect(theirs.metas[2].name, 'Crunch');
+    expect(PresetBackup.fromJson(b.toJson()).copy().details, b.details);
   });
 
   test('an edit the pedal cannot take is refused with its place', () {

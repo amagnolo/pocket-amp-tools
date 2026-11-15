@@ -2,6 +2,12 @@
 
 What changed in each release, for people who use the app. The commit-level list of every release is on the [releases page](https://github.com/vitoramaral10/pocket-amp-tools/releases).
 
+## Unreleased
+
+### Presets
+
+- Saved preset files and backups now carry the preset names, descriptions, labels and ratings. Opening one that has different details asks whether to use them, so the details move between computers and phones with the presets ([#58](https://github.com/vitoramaral10/pocket-amp-tools/issues/58)).
+
 ## 0.3.0
 
 First release outside beta, and the first that runs on Android.
