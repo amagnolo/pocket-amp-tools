@@ -852,10 +852,18 @@ class _HomePageState extends State<HomePage> implements AssistantHost {
     final PresetBackup b = _workspace.draft!
       ..details = _workspace.details.toJson();
     if (Platform.isAndroid) {
-      // file_selector has no save dialog on Android: keep it with the backups.
-      final File f = await PresetService.keepCopy(b);
+      // file_selector has no save dialog on Android: Android's own, in
+      // MainActivity.kt.
+      final String? uri = await const MethodChannel('pocket_amp/files')
+          .invokeMethod<String>('save', <String, String>{
+            'name': b.suggestedFileName,
+            'text': b.toJson(),
+          });
+      if (uri == null) {
+        return 'Not saved (no file chosen).';
+      }
       _workspace.saved();
-      return 'Saved to ${f.path}.';
+      return 'Saved as ${b.suggestedFileName}.';
     }
     final FileSaveLocation? where = await getSaveLocation(
       suggestedName: b.suggestedFileName,

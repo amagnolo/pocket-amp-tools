@@ -6,7 +6,13 @@ What changed in each release, for people who use the app. The commit-level list 
 
 ### Presets
 
-- Saved preset files and backups now carry the preset names, descriptions, labels and ratings. Opening one that has different details asks whether to use them, so the details move between computers and phones with the presets ([#58](https://github.com/vitoramaral10/pocket-amp-tools/issues/58)).
+- Saved preset files and backups now carry the preset names, descriptions, labels and ratings. Opening one that has different details asks whether to use them, so the details travel with the presets to another computer or phone ([#58](https://github.com/vitoramaral10/pocket-amp-tools/issues/58)).
+- **Copy as JSON** takes the preset's name, description, labels and rating along, and pasting gives them to the target slot ([#59](https://github.com/vitoramaral10/pocket-amp-tools/issues/59)).
+- On a wide window the editor's header uses the full width, with the volume on the right, so descriptions are no longer cut short ([#60](https://github.com/vitoramaral10/pocket-amp-tools/issues/60)).
+
+### Android
+
+- **Save file…** opens Android's save dialog, so a preset file can go to Downloads, a cloud drive or another app and be opened on another device. Before, it stayed in the app's private folder.
 
 ## 0.3.0
 
