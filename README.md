@@ -176,7 +176,7 @@ Before anything is written, the app:
 | Linux | tested with a real pedal; preset backup and restore too | the app's traffic was traced side by side with the Python prototype that updated a real pedal from V1.03 to V1.05: same requests, same answers. A full update by the app itself waits for the next firmware, because the pedal refuses to reinstall the version it already runs |
 | Windows | works: a user's pedal was detected and its presets read ([#2](../../issues/2)) | works: a Coolmusic PIXIE1 was updated from V0.07 to Pocket AMP V1.05 ([#2](../../issues/2)), and a Donner Pocket AMP from V08 ([discussion #1](../../discussions/1)); in both, the first attempt stopped in update mode and the second finished |
 | macOS | works: a New Bee SK17 was detected ([#6](../../pull/6)) | works: the same SK17 was updated to Pocket AMP V1.05, with a fork that differs only in which pedals it accepts ([#6](../../pull/6)) |
-| Android | over Bluetooth, presets were read, edited and written on a real pedal; USB (OTG cable) was not yet reported on one ([#33](../../issues/33)) | not tried; it needs a USB OTG cable, so keep the phone charged |
+| Android | over Bluetooth, presets were read, edited and written on a real pedal, on 64-bit phones and on a 32-bit (ARM32) Galaxy Tab S 8.4 that M-VAVE's app does not install on ([discussion #53](../../discussions/53)); USB (OTG cable) was not yet reported on one ([#33](../../issues/33)) | not tried; it needs a USB OTG cable, so keep the phone charged |
 
 Reports are very welcome, including "it worked": use the [hardware test report](../../issues/new?template=hardware_report.yml) form.
 
