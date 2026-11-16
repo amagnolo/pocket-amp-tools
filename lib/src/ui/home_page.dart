@@ -533,6 +533,7 @@ class _HomePageState extends State<HomePage> implements AssistantHost {
               () => _progress = UpdateProgress(UpdatePhase.backup, f),
             ),
           );
+          b.details = _workspace.details.toJson();
           final File copy = await PresetService.keepCopy(b);
           _addLog('Presets backed up to ${copy.path}');
           setState(() => _preUpdateBackup = b);
@@ -798,11 +799,10 @@ class _HomePageState extends State<HomePage> implements AssistantHost {
       if (await file.length() > 4 << 20) {
         throw const FormatException('the file is too large for a backup');
       }
-      _workspace.load(
-        PresetBackup.fromJson(await file.readAsString()),
-        file.name,
-      );
+      final PresetBackup b = PresetBackup.fromJson(await file.readAsString());
+      _workspace.load(b, file.name);
       setState(() => _presetMessage = null);
+      await _offerDetails(b);
     } catch (e) {
       setState(() {
         _presetMessage = 'Not a valid backup: $e';
@@ -811,13 +811,59 @@ class _HomePageState extends State<HomePage> implements AssistantHost {
     }
   }
 
+  /// Asks whether to take the names, labels and ratings saved in [b] in
+  /// place of the app's own, when it has some and they differ.
+  Future<void> _offerDetails(PresetBackup b) async {
+    final Map<String, Object?>? d = b.details;
+    if (d == null ||
+        jsonEncode(d) == jsonEncode(_workspace.details.toJson()) ||
+        !mounted) {
+      return;
+    }
+    final bool? replace = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Use the preset details in this file?'),
+        content: const Text(
+          'The file also has preset names, descriptions, labels and ratings. '
+          'Replace the ones in the app with them? This applies to every '
+          'preset, not only the ones you edit.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep mine'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Replace'),
+          ),
+        ],
+      ),
+    );
+    if (replace == true) {
+      _workspace.details
+        ..fromJson(d)
+        ..changed();
+    }
+  }
+
   Future<void> _savePresetFile() => _runPresetTask('Saving a file', () async {
-    final PresetBackup b = _workspace.draft!;
+    final PresetBackup b = _workspace.draft!
+      ..details = _workspace.details.toJson();
     if (Platform.isAndroid) {
-      // file_selector has no save dialog on Android: keep it with the backups.
-      final File f = await PresetService.keepCopy(b);
+      // file_selector has no save dialog on Android: Android's own, in
+      // MainActivity.kt.
+      final String? uri = await const MethodChannel('pocket_amp/files')
+          .invokeMethod<String>('save', <String, String>{
+            'name': b.suggestedFileName,
+            'text': b.toJson(),
+          });
+      if (uri == null) {
+        return 'Not saved (no file chosen).';
+      }
       _workspace.saved();
-      return 'Saved to ${f.path}.';
+      return 'Saved as ${b.suggestedFileName}.';
     }
     final FileSaveLocation? where = await getSaveLocation(
       suggestedName: b.suggestedFileName,
@@ -839,6 +885,7 @@ class _HomePageState extends State<HomePage> implements AssistantHost {
       _pedal!,
       onProgress: (double f) => setState(() => _presetFraction = f),
     );
+    b.details = _workspace.details.toJson();
     final File f = await PresetService.keepCopy(b);
     return 'Backup kept at ${f.path}.';
   });
@@ -1105,6 +1152,7 @@ class _HomePageState extends State<HomePage> implements AssistantHost {
       _presetMessage = null;
       _section = 0;
     });
+    await _offerDetails(b);
   }
 
   /// Writes a frozen copy of the draft, refusing if the pedal changed since

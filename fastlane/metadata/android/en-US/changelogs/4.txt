@@ -1,0 +1,4 @@
+* Saved preset files and backups carry the names, descriptions, labels and ratings.
+* Copy as JSON takes a preset's details along.
+* Save file… opens Android's save dialog, so files can go to Downloads or a cloud drive.
+* On a wide screen the preset header uses the full width.

@@ -520,10 +520,13 @@ Future<void> _copyPreset(
   PresetWorkspace workspace,
 ) async {
   final int id = workspace.selected;
+  final PresetMeta meta = workspace.details.metas[id];
   await Clipboard.setData(
     ClipboardData(
-      text: const JsonEncoder.withIndent('  ')
-          .convert(workspace.draft!.presetFields(id)),
+      text: const JsonEncoder.withIndent('  ').convert(<String, Object>{
+        ...workspace.draft!.presetFields(id),
+        if (!meta.isEmpty) 'details': meta.toJson(),
+      }),
     ),
   );
   if (context.mounted) {
@@ -547,6 +550,12 @@ Future<void> _pastePreset(
       throw const FormatException('expected one preset as a JSON object');
     }
     workspace.draft!.setPresetFields(id, j);
+    // Without "details" (copied before they existed, or none set) the slot
+    // keeps its own.
+    if (j['details'] != null) {
+      workspace.details.metas[id] = PresetMeta.fromJson(j['details']);
+      workspace.details.changed();
+    }
     workspace.edited();
     workspace.showOnPedal();
     done =
@@ -1173,23 +1182,31 @@ class _Detail extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     final int open = workspace.openBlock;
     return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints box) => ListView(
-        // The content is a column at most 1040 wide, centred on the page.
-        padding: EdgeInsets.fromLTRB(
-          math.max(24, (box.maxWidth - 1040) / 2),
-          16,
-          math.max(24, (box.maxWidth - 1040) / 2),
-          32,
-        ),
-        children: _children(
+      builder: (BuildContext context, BoxConstraints box) {
+        final List<Widget> children = _children(
           context,
           theme,
           open,
           box.maxWidth < 600,
           // Room for the summary beside the volume.
           box.maxWidth >= 840,
-        ),
-      ),
+          box.maxWidth - 48,
+        );
+        // The header spans the page, so the summary has room on a wide
+        // screen; the rest is a column at most 1040 wide, centred.
+        final double inset = math.max(0, (box.maxWidth - 1040) / 2 - 24);
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+          children: <Widget>[
+            children.first,
+            for (final Widget w in children.skip(1))
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: inset),
+                child: w,
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -1225,6 +1242,7 @@ class _Detail extends StatelessWidget {
     int open,
     bool compact,
     bool summaryInline,
+    double width,
   ) => <Widget>[
     Row(
       children: <Widget>[
@@ -1261,13 +1279,16 @@ class _Detail extends StatelessWidget {
         // On a phone the picker leaves too little, so it gets its own line.
         if (summaryInline)
           Expanded(
-            flex: 3,
             child: Padding(
               padding: const EdgeInsets.only(right: 24),
               child: _summary(context),
             ),
           ),
-        if (!compact)
+        // Beside the summary, the volume keeps to the right and the summary
+        // takes the rest.
+        if (summaryInline)
+          SizedBox(width: math.min(600, width * 4 / 7), child: _volume())
+        else if (!compact)
           Expanded(
             flex: 4,
             child: Center(
@@ -1290,8 +1311,6 @@ class _Detail extends StatelessWidget {
             onPressed: () => _editDetails(context),
             icon: const Icon(Icons.edit_note),
           ),
-        // As wide as the summary, so the volume stays in the middle.
-        if (summaryInline) const Spacer(flex: 3),
       ],
     ),
     if (compact) _volume(labelAbove: true),

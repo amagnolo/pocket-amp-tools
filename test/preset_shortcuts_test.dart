@@ -286,45 +286,51 @@ void main() {
     expect(w.details.filtering, isFalse);
   });
 
-  testWidgets('Ctrl+Shift+C and Ctrl+Shift+V copy one preset onto another', (
-    WidgetTester tester,
-  ) async {
-    String? clip;
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (MethodCall call) async {
-        if (call.method == 'Clipboard.setData') {
-          clip = (call.arguments as Map<Object?, Object?>)['text'] as String?;
-        } else if (call.method == 'Clipboard.getData') {
-          return <String, Object?>{'text': clip};
-        }
-        return null;
-      },
-    );
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+  testWidgets(
+    'Ctrl+Shift+C and Ctrl+Shift+V copy one preset onto another, with its details',
+    (WidgetTester tester) async {
+      String? clip;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
         SystemChannels.platform,
-        null,
-      ),
-    );
-    final PresetWorkspace w = await _open(tester);
-    Future<void> ctrlShift(LogicalKeyboardKey k) async {
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
-      await tester.sendKeyEvent(k);
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
-      await tester.pumpAndSettle();
-    }
+        (MethodCall call) async {
+          if (call.method == 'Clipboard.setData') {
+            clip = (call.arguments as Map<Object?, Object?>)['text'] as String?;
+          } else if (call.method == 'Clipboard.getData') {
+            return <String, Object?>{'text': clip};
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+      final PresetWorkspace w = await _open(tester);
+      w.details.metas[0]
+        ..name = 'Crunch'
+        ..rating = 4;
+      Future<void> ctrlShift(LogicalKeyboardKey k) async {
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.sendKeyEvent(k);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+      }
 
-    await ctrlShift(LogicalKeyboardKey.keyC);
-    expect(clip, isNotNull);
-    w.select(5);
-    await ctrlShift(LogicalKeyboardKey.keyV);
-    Map<String, Object?> body(int id) =>
-        Map<String, Object?>.of(w.draft!.presetFields(id))..remove('preset');
-    expect(body(5), body(0));
-  });
+      await ctrlShift(LogicalKeyboardKey.keyC);
+      expect(clip, isNotNull);
+      w.select(5);
+      await ctrlShift(LogicalKeyboardKey.keyV);
+      Map<String, Object?> body(int id) =>
+          Map<String, Object?>.of(w.draft!.presetFields(id))..remove('preset');
+      expect(body(5), body(0));
+      expect(w.details.metas[5].toJson(), w.details.metas[0].toJson());
+      expect(w.details.metas[5].name, 'Crunch');
+    },
+  );
 
   testWidgets('Ctrl+Z discards the changes back to the pedal', (
     WidgetTester tester,
