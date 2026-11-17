@@ -28,8 +28,7 @@ It works with the pedal whatever brand is printed on it: **M-VAVE Pocket AMP**, 
 ## Why use it instead of M-VAVE's software
 
 - **Your sounds are yours.** Presets live in open, documented files on your computer, not only inside the pedal.
-- **You can tell your presets apart.** Give each preset a name, a description, genres, tags and a 1 to 5 star rating, then filter the list by them. M-VAVE's software has none of this: there a preset is only a number, P01 to P80.
-- **It runs where the official software does not.** M-VAVE's firmware updater runs only on Windows; this app updates from macOS, Linux and Android too. On Android it also runs on 32-bit devices that M-VAVE's app does not install on.
+- **It runs where the official software does not.** M-VAVE's firmware updater runs only on Windows; this app runs on macOS, Linux and Android too ([what was tested on each](#status)). On Android it also runs on 32-bit devices that M-VAVE's app does not install on.
 - **It installs the current firmware.** At the time of writing, M-VAVE's "POCKET AMP" updater bundle ships an older firmware than the one on its own downloads page. This app downloads the current official file.
 - **Updating is safer for your presets.** A firmware update can overwrite presets and their EQ. The app backs them all up first and restores the ones that changed afterwards, and it can resume an update that stopped halfway.
 - **It refuses to do harm.** The firmware package, the pedal's identity and every packet sent are checked before anything is written. [See the safety checks](#safety-checks)
