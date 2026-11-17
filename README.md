@@ -6,19 +6,38 @@
 [![license](https://img.shields.io/github/license/vitoramaral10/pocket-amp-tools)](LICENSE)
 ![platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android-informational)
 
-Edit the presets and update the firmware of the **Pocket AMP** guitar pedal from **macOS, Linux, Windows or Android**. The same pedal is sold as the **M-VAVE Pocket AMP**, the **Donner Pocket AMP**, the **Coolmusic PIXIE1** and the **New Bee SK17**, among other names, and this app is for every one of them, whatever brand is printed on yours. Website: <https://vitoramaral10.github.io/pocket-amp-tools/>
+A free, open-source app to **edit the presets, manage the IRs and amp captures, back up and update the firmware** of the **Pocket AMP** guitar pedal, on **Windows, macOS, Linux and Android**.
 
-The firmware comes from M-VAVE (currently V1.05). M-VAVE's own updater runs only on Windows and, at the time of writing, its "POCKET AMP" bundle ships an older firmware than the one on the downloads page. This app sends the current `.fwsc` file from M-VAVE over plain USB-MIDI, so it needs no drivers. Beyond updating, it is a preset editor heard live on the pedal, a library for your IRs and amp captures, a keeper of backups and an optional AI assistant. What each release changed is in the [changelog](CHANGELOG.md).
+It works with the pedal whatever brand is printed on it: **M-VAVE Pocket AMP**, **Donner Pocket AMP**, **Coolmusic PIXIE1**, **New Bee SK17** and others. Website: <https://vitoramaral10.github.io/pocket-amp-tools/>
 
 <picture>
   <source srcset="docs/screenshot-dark.png" media="(prefers-color-scheme: dark)">
   <img src="docs/screenshot-light.png" width="720" alt="Pocket AMP Tools: the preset editor with the 80 presets, the signal chain, and each block's model and knobs, played live on the pedal">
 </picture>
 
-> **Community tool, not affiliated with M-VAVE or any other brand of the pedal. Use at your own risk.** A firmware update that is interrupted can leave the pedal unusable.
+## What it does
 
+- **Preset editor, heard live.** All 80 presets on one screen: signal chain, models, knobs and EQ. Each change plays on the pedal as you make it, and nothing is stored until you write. [More](#presets)
+- **Names, tags and ratings** for your presets, with a filter, and keyboard shortcuts for everything.
+- **Optional AI assistant**, on a service and key of your choice: ask for a sound and it edits the preset for you.
+- **Library for IRs and amp captures.** Send your own IRs and [TONE3000](https://www.tone3000.com) A2 `.nam` captures to the pedal's 20 CAB and 20 AMP slots, and see which file is in which slot. [More](#presets)
+- **Bluetooth** editing on Linux and Android. [More](#bluetooth-linux-and-android)
+- **Backups you can read.** Every preset is saved as plain JSON that you can edit by hand and restore. One is taken automatically before each firmware update.
+- **Firmware update.** Fetches the current firmware from M-VAVE (V1.05) and installs it over plain USB-MIDI, with no drivers. [More](#how-to-update)
 
-> Formerly **Pocket AMP Upgrader**: it grew from a firmware updater into a preset editor, and was renamed.
+## Why use it instead of M-VAVE's software
+
+- **Your sounds are yours.** Presets live in open, documented files on your computer, not only inside the pedal.
+- **You can tell your presets apart.** Give each preset a name, a description, genres, tags and a 1 to 5 star rating, then filter the list by them. M-VAVE's software has none of this: there a preset is only a number, P01 to P80.
+- **It runs where the official software does not.** M-VAVE's firmware updater runs only on Windows; this app updates from macOS, Linux and Android too. On Android it also runs on 32-bit devices that M-VAVE's app does not install on.
+- **It installs the current firmware.** At the time of writing, M-VAVE's "POCKET AMP" updater bundle ships an older firmware than the one on its own downloads page. This app downloads the current official file.
+- **Updating is safer for your presets.** A firmware update can overwrite presets and their EQ. The app backs them all up first and restores the ones that changed afterwards, and it can resume an update that stopped halfway.
+- **It refuses to do harm.** The firmware package, the pedal's identity and every packet sent are checked before anything is written. [See the safety checks](#safety-checks)
+- **It is open source** (GPL-3.0): you can read what it sends to your pedal, and fix or extend it.
+
+> **Community tool, not affiliated with M-VAVE or any other brand of the pedal. Use at your own risk.** A firmware update that is interrupted can leave the pedal unusable. The firmware itself comes from M-VAVE; this app only delivers it.
+
+What each release changed is in the [changelog](CHANGELOG.md). The app was formerly called **Pocket AMP Upgrader**: it grew from a firmware updater into a preset editor, and was renamed.
 
 ## Download
 
