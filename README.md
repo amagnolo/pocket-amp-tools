@@ -6,19 +6,37 @@
 [![license](https://img.shields.io/github/license/vitoramaral10/pocket-amp-tools)](LICENSE)
 ![platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android-informational)
 
-Edit the presets and update the firmware of the **Pocket AMP** guitar pedal from **macOS, Linux, Windows or Android**. The same pedal is sold as the **M-VAVE Pocket AMP**, the **Donner Pocket AMP**, the **Coolmusic PIXIE1** and the **New Bee SK17**, among other names, and this app is for every one of them, whatever brand is printed on yours. Website: <https://vitoramaral10.github.io/pocket-amp-tools/>
+A free, open-source app to **edit the presets, manage the IRs and amp captures, back up and update the firmware** of the **Pocket AMP** guitar pedal, on **Windows, macOS, Linux and Android**.
 
-The firmware comes from M-VAVE (currently V1.05). M-VAVE's own updater runs only on Windows and, at the time of writing, its "POCKET AMP" bundle ships an older firmware than the one on the downloads page. This app sends the current `.fwsc` file from M-VAVE over plain USB-MIDI, so it needs no drivers. Beyond updating, it is a preset editor heard live on the pedal, a library for your IRs and amp captures, a keeper of backups and an optional AI assistant. What each release changed is in the [changelog](CHANGELOG.md).
+It works with the pedal whatever brand is printed on it: **M-VAVE Pocket AMP**, **Donner Pocket AMP**, **Coolmusic PIXIE1**, **New Bee SK17** and others. Website: <https://vitoramaral10.github.io/pocket-amp-tools/>
 
 <picture>
   <source srcset="docs/screenshot-dark.png" media="(prefers-color-scheme: dark)">
   <img src="docs/screenshot-light.png" width="720" alt="Pocket AMP Tools: the preset editor with the 80 presets, the signal chain, and each block's model and knobs, played live on the pedal">
 </picture>
 
-> **Community tool, not affiliated with M-VAVE or any other brand of the pedal. Use at your own risk.** A firmware update that is interrupted can leave the pedal unusable.
+## What it does
 
+- **Preset editor, heard live.** All 80 presets on one screen: signal chain, models, knobs and EQ. Each change plays on the pedal as you make it, and nothing is stored until you write. [More](#presets)
+- **Names, tags and ratings** for your presets, with a filter, and keyboard shortcuts for everything.
+- **Optional AI assistant**, on a service and key of your choice: ask for a sound and it edits the preset for you.
+- **Library for IRs and amp captures.** Send your own IRs and [TONE3000](https://www.tone3000.com) A2 `.nam` captures to the pedal's 20 CAB and 20 AMP slots, and see which file is in which slot. [More](#presets)
+- **Bluetooth** editing on Linux and Android. [More](#bluetooth-linux-and-android)
+- **Backups you can read.** Every preset is saved as plain JSON that you can edit by hand and restore. One is taken automatically before each firmware update.
+- **Firmware update.** Fetches the current firmware from M-VAVE (V1.05) and installs it over plain USB-MIDI, with no drivers. [More](#how-to-update)
 
-> Formerly **Pocket AMP Upgrader**: it grew from a firmware updater into a preset editor, and was renamed.
+## Why use it instead of M-VAVE's software
+
+- **Your sounds are yours.** Presets live in open, documented files on your computer, not only inside the pedal.
+- **It runs where the official software does not.** M-VAVE's firmware updater runs only on Windows; this app runs on macOS, Linux and Android too ([what was tested on each](#status)). On Android it also runs on 32-bit devices that M-VAVE's app does not install on.
+- **It installs the current firmware.** At the time of writing, M-VAVE's "POCKET AMP" updater bundle ships an older firmware than the one on its own downloads page. This app downloads the current official file.
+- **Updating is safer for your presets.** A firmware update can overwrite presets and their EQ. The app backs them all up first and restores the ones that changed afterwards, and it can resume an update that stopped halfway.
+- **It refuses to do harm.** The firmware package, the pedal's identity and every packet sent are checked before anything is written. [See the safety checks](#safety-checks)
+- **It is open source** (GPL-3.0): you can read what it sends to your pedal, and fix or extend it.
+
+> **Community tool, not affiliated with M-VAVE or any other brand of the pedal. Use at your own risk.** A firmware update that is interrupted can leave the pedal unusable. The firmware itself comes from M-VAVE; this app only delivers it.
+
+What each release changed is in the [changelog](CHANGELOG.md). The app was formerly called **Pocket AMP Upgrader**: it grew from a firmware updater into a preset editor, and was renamed.
 
 ## Download
 
@@ -176,7 +194,7 @@ Before anything is written, the app:
 | Linux | tested with a real pedal; preset backup and restore too | the app's traffic was traced side by side with the Python prototype that updated a real pedal from V1.03 to V1.05: same requests, same answers. A full update by the app itself waits for the next firmware, because the pedal refuses to reinstall the version it already runs |
 | Windows | works: a user's pedal was detected and its presets read ([#2](../../issues/2)) | works: a Coolmusic PIXIE1 was updated from V0.07 to Pocket AMP V1.05 ([#2](../../issues/2)), and a Donner Pocket AMP from V08 ([discussion #1](../../discussions/1)); in both, the first attempt stopped in update mode and the second finished |
 | macOS | works: a New Bee SK17 was detected ([#6](../../pull/6)) | works: the same SK17 was updated to Pocket AMP V1.05, with a fork that differs only in which pedals it accepts ([#6](../../pull/6)) |
-| Android | over Bluetooth, presets were read, edited and written on a real pedal; USB (OTG cable) was not yet reported on one ([#33](../../issues/33)) | not tried; it needs a USB OTG cable, so keep the phone charged |
+| Android | over Bluetooth, presets were read, edited and written on a real pedal, on 64-bit phones and on a 32-bit (ARM32) Galaxy Tab S 8.4 that M-VAVE's app does not install on ([discussion #53](../../discussions/53)); USB (OTG cable) was not yet reported on one ([#33](../../issues/33)) | not tried; it needs a USB OTG cable, so keep the phone charged |
 
 Reports are very welcome, including "it worked": use the [hardware test report](../../issues/new?template=hardware_report.yml) form.
 
