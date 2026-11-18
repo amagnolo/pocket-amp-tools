@@ -1,11 +1,17 @@
 name: build
 
+# Pull requests run the tests. The release builds run only for a version tag
+# (or by hand from the Actions tab), so a merge does not rebuild every platform.
 on:
   push:
-    branches: [main, develop]
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+
+# A new push to a pull request cancels the run it makes obsolete.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -29,7 +35,7 @@ jobs:
 
   build:
     needs: test
-    # PRs only run the tests; the builds run after the merge.
+    # PRs only run the tests; the builds run for a tag or by hand.
     if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
