@@ -80,6 +80,14 @@ class Telemetry {
           }
           for (final SentryException x in e.exceptions ?? <SentryException>[]) {
             x.value = scrub(x.value);
+            // Debug and profile builds report source paths, which start in
+            // the user's home folder.
+            for (final SentryStackFrame f
+                in x.stackTrace?.frames ?? <SentryStackFrame>[]) {
+              f
+                ..absPath = scrub(f.absPath)
+                ..fileName = scrub(f.fileName);
+            }
           }
           return e;
         };
@@ -123,13 +131,49 @@ class Telemetry {
   }
 
   /// [text] without the user's home folder, which carries their name.
-  static String? scrub(String? text) {
-    final String? home =
-        Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
-    return text == null || home == null || home.isEmpty
-        ? text
-        : text.replaceAll(home, '~');
+  ///
+  /// Matches the folder as written in `HOME` or `USERPROFILE` and, on
+  /// Windows, with either kind of slash and any letter case. A home that is
+  /// only a root (`/`, `C:\`), as in a container, is left alone: replacing it
+  /// would garble every path in the text. [home] and [windows] are for tests.
+  static String? scrub(String? text, {Iterable<String?>? home, bool? windows}) {
+    if (text == null) {
+      return null;
+    }
+    final bool win = windows ?? Platform.isWindows;
+    final Set<String> folders = <String>{};
+    for (final String? h in home ?? _homes()) {
+      String f = (h ?? '').trim();
+      while (f.length > 1 && (f.endsWith('/') || f.endsWith(_bs))) {
+        f = f.substring(0, f.length - 1);
+      }
+      // Root only: "/", "C:", "C:\" (already trimmed to "C:").
+      if (f.length < 2 || RegExp(r'^[A-Za-z]:$').hasMatch(f)) {
+        continue;
+      }
+      folders.add(f);
+      if (win) {
+        folders
+          ..add(f.replaceAll(_bs, '/'))
+          ..add(f.replaceAll('/', _bs));
+      }
+    }
+    // Longest first, so a home inside another home is replaced whole.
+    final List<String> order = folders.toList()
+      ..sort((String a, String b) => b.length.compareTo(a.length));
+    String out = text;
+    for (final String f in order) {
+      out = out.replaceAll(RegExp(RegExp.escape(f), caseSensitive: !win), '~');
+    }
+    return out;
   }
+
+  static const String _bs = '\\';
+
+  static List<String?> _homes() => <String?>[
+    Platform.environment['HOME'],
+    Platform.environment['USERPROFILE'],
+  ];
 
   static Future<File> _file() async => File(
     '${(await getApplicationSupportDirectory()).path}'
