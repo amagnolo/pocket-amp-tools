@@ -48,6 +48,13 @@ Project layout:
 | `lib/src/assistant/` | the optional AI assistant and what it knows about the pedal |
 | `lib/src/ui/` | the interface |
 
+## Branches and releases
+
+- `main` is the only long-lived branch. Open pull requests against it from a short branch named `feature/...`, `bugfix/...` or `docs/...`.
+- A pull request runs `flutter analyze` and `flutter test`. The release builds do not run on a merge.
+- A release is a pull request that bumps the version in `pubspec.yaml` and dates the [CHANGELOG](CHANGELOG.md), followed by a tag `vX.Y.Z` on the merge commit. The tag builds Linux, Windows, macOS and Android, and publishes the GitHub release with checksums. A tag with a `-` in it (`v0.5.0-beta.1`) is published as a pre-release.
+- To try the builds before a release, run the `build` workflow by hand from the Actions tab.
+
 ## Pull requests
 
 - Keep each PR focused on one change.
